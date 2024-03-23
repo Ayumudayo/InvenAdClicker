@@ -21,7 +21,7 @@ namespace InvenAdClicker.processing
 
         public UrlProcessor()
         {
-            _appSettings = SettingsManager.LoadSettings();
+            _appSettings = SettingsManager.LoadAppSettings();
             _jobManager = new JobManager();
             _progressTracker = ProgressTracker.Instance;
             Logger.Info($"UrlProcessor Initialized. Iteration: {_appSettings.MaxIter} / Set: {_appSettings.MaxSet} / Worker: {_appSettings.MaxWorker}");

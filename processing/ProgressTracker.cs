@@ -32,7 +32,7 @@ namespace InvenAdClicker.processing
         private ProgressTracker()
         {
             _progressTracker = new ConcurrentDictionary<string, ProgressInfo>();
-            _settings = SettingsManager.LoadSettings();
+            _settings = SettingsManager.LoadAppSettings();
         }
 
         public void UpdateProgress(string url, bool incrementIteration = false, bool incrementError = false, int threadCountChange = 0)

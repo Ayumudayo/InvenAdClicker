@@ -7,14 +7,14 @@ namespace InvenAdClicker.processing;
 public class JobManager
 {
     private ConcurrentQueue<Job> _jobPool;
-    private readonly AppSettings _setting = SettingsManager.LoadSettings();
+    private readonly AppSettings _setting = SettingsManager.LoadAppSettings();
     private ProgressTracker _progressTracker;
 
     public JobManager()
     {
         _progressTracker = ProgressTracker.Instance;
         _jobPool = new();
-        GenerateJobs(GetUrlsToProcess());
+        GenerateJobs(SettingsManager.LoadURL());
         Logger.Info("JobManger initialized.");
     }
 
