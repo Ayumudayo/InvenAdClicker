@@ -1,4 +1,5 @@
 ﻿using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium;
 using SeleniumExtras.WaitHelpers;
@@ -8,40 +9,65 @@ namespace InvenAdClicker.processing
 {
     public class WebDriverService : IDisposable
     {
-        private ChromeDriver _driver;
-        private ChromeDriverService _service;
+        private IWebDriver _driver;
+        private ChromeDriverService _chromeService;
+        private FirefoxDriverService _firefoxService;
         private bool disposedValue;
+        private readonly string _browserType;
 
         public WebDriverService()
         {
+            _browserType = "chrome";
             AppDomain.CurrentDomain.ProcessExit += (sender, e) => CleanUp();
             Console.CancelKeyPress += (sender, e) =>
             {
                 CleanUp();
-                e.Cancel = true; // Prevent the process from terminating immediately
+                e.Cancel = true;
             };
         }
 
-        private ChromeOptions GetDriverOptions()
+        private ChromeOptions GetChromeOptions()
         {
             var options = new ChromeOptions();
             options.AddArguments("--headless", "--incognito");
             return options;
         }
 
+        private FirefoxOptions GetFirefoxOptions()
+        {
+            var options = new FirefoxOptions();
+            options.AddArguments("--headless");
+            options.BrowserExecutableLocation = "C:/Program Files/Mozilla Firefox/firefox.exe";
+            return options;
+        }
+
         private ChromeDriverService GetChromeDriverService()
         {
-            _service = ChromeDriverService.CreateDefaultService();
-            _service.SuppressInitialDiagnosticInformation = true;
-            _service.HideCommandPromptWindow = true;
+            _chromeService = ChromeDriverService.CreateDefaultService();
+            _chromeService.SuppressInitialDiagnosticInformation = true;
+            _chromeService.HideCommandPromptWindow = true;
 
-            string logFileName = $"chromedriver_{DateTime.Now:yyyy-MM-dd}.log";
-            string logFilePath = System.IO.Path.Combine("logs/ChromeDriver", logFileName);
+            //string logFileName = $"chromedriver_{DateTime.Now:yyyy-MM-dd}.log";
+            //string logFilePath = System.IO.Path.Combine("logs/ChromeDriver", logFileName);
 
-            _service.LogPath = logFilePath;
-            _service.EnableAppendLog = true;
+            //_chromeService.LogPath = logFilePath;
+            //_chromeService.EnableAppendLog = true;
 
-            return _service;
+            return _chromeService;
+        }
+
+        private FirefoxDriverService GetFirefoxDriverService()
+        {
+            string geckodriverPath = "C:/geckodriver/geckodriver.exe";
+
+            _firefoxService = FirefoxDriverService.CreateDefaultService(geckodriverPath);
+            _firefoxService.SuppressInitialDiagnosticInformation = true;
+            _firefoxService.HideCommandPromptWindow = true;
+
+            //string logFileName = $"firefoxdriver_{DateTime.Now:yyyy-MM-dd}.log";
+            //string logFilePath = System.IO.Path.Combine("logs/FirefoxDriver", logFileName);
+
+            return _firefoxService;
         }
 
         private bool IsLoginFailed(IWebDriver driver)
@@ -60,7 +86,18 @@ namespace InvenAdClicker.processing
 
         public bool SetupAndLogin(out IWebDriver driver)
         {
-            _driver = new ChromeDriver(GetChromeDriverService(), GetDriverOptions());
+            switch (_browserType.ToLower())
+            {
+                case "chrome":
+                    _driver = new ChromeDriver(GetChromeDriverService(), GetChromeOptions());
+                    break;
+                case "firefox":
+                    _driver = new FirefoxDriver(GetFirefoxDriverService(), GetFirefoxOptions());
+                    break;
+                default:
+                    throw new ArgumentException($"Unsupported browser type: {_browserType}");
+            }
+
             try
             {
                 WebDriverWait wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(10));
@@ -76,7 +113,6 @@ namespace InvenAdClicker.processing
                 if (IsLoginFailed(_driver))
                 {
                     Logger.Error("Login failed.");
-                    CleanUp();
                     driver = null;
                     return false;
                 }
@@ -89,7 +125,6 @@ namespace InvenAdClicker.processing
             catch (Exception ex)
             {
                 Logger.Error($"Exception during login: {ex.Message}");
-                CleanUp();
                 driver = null;
                 return false;
             }
@@ -99,7 +134,16 @@ namespace InvenAdClicker.processing
         {
             _driver?.Quit();
             _driver?.Dispose();
-            _service?.Dispose();
+
+            switch (_browserType.ToLower())
+            {
+                case "chrome":
+                    _chromeService?.Dispose();
+                    break;
+                case "firefox":
+                    _firefoxService?.Dispose();
+                    break;
+            }
         }
 
         protected virtual void Dispose(bool disposing)
@@ -108,26 +152,14 @@ namespace InvenAdClicker.processing
             {
                 if (disposing)
                 {
-                    // TODO: 관리형 상태(관리형 개체)를 삭제합니다.
                     CleanUp();
                 }
-
-                // TODO: 비관리형 리소스(비관리형 개체)를 해제하고 종료자를 재정의합니다.
-                // TODO: 큰 필드를 null로 설정합니다.
                 disposedValue = true;
             }
         }
 
-        // // TODO: 비관리형 리소스를 해제하는 코드가 'Dispose(bool disposing)'에 포함된 경우에만 종료자를 재정의합니다.
-        // ~WebDriverService()
-        // {
-        //     // 이 코드를 변경하지 마세요. 'Dispose(bool disposing)' 메서드에 정리 코드를 입력합니다.
-        //     Dispose(disposing: false);
-        // }
-
         public void Dispose()
         {
-            // 이 코드를 변경하지 마세요. 'Dispose(bool disposing)' 메서드에 정리 코드를 입력합니다.
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
         }

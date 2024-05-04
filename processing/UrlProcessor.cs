@@ -10,6 +10,7 @@ using InvenAdClicker.helper;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
+using System.Collections.Concurrent;
 
 namespace InvenAdClicker.processing
 {
@@ -18,6 +19,7 @@ namespace InvenAdClicker.processing
         private readonly AppSettings _appSettings;
         private readonly JobManager _jobManager;
         private readonly ProgressTracker _progressTracker;
+        private ConcurrentDictionary<string, HashSet<string>> _adLinkCache = new ConcurrentDictionary<string, HashSet<string>>();
 
         public UrlProcessor()
         {
@@ -52,7 +54,18 @@ namespace InvenAdClicker.processing
                         {
                             try
                             {
-                                ProcessSingleUrlAsync(job);
+                                using (var driverService = new WebDriverService())
+                                {
+                                    if (driverService.SetupAndLogin(out IWebDriver driver))
+                                    {
+                                        ProcessSingleUrlAsync(driver, job);
+                                    }
+                                    else
+                                    {
+                                        _progressTracker.UpdateProgress(job.Url, false, false, -1);
+                                        Logger.Error("Driver setup failed.");
+                                    }
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -66,9 +79,8 @@ namespace InvenAdClicker.processing
                     }
                     else
                     {
-                        // Remove completed tasks
                         tasks.RemoveAll(t => t.IsCompleted);
-                        await Task.Delay(100);
+                        await Task.Yield();
                     }
                 }
 
@@ -78,35 +90,21 @@ namespace InvenAdClicker.processing
             PrintCompletionLog(stopwatch);
         }
 
-        private void ProcessSingleUrlAsync(Job job)
+        private void ProcessSingleUrlAsync(IWebDriver driver, Job job)
         {
             _progressTracker.UpdateProgress(job.Url, false, false, 1);
 
-            using (var driverService = new WebDriverService())
+            try
             {
-                if (driverService.SetupAndLogin(out IWebDriver driver))
-                {
-                    using (driver)
-                    {
-                        try
-                        {
-                            ProcessJob(driver, job);
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error($"ProcessSingleUrlAsync Error: {ex}");
-                        }
-                        finally
-                        {
-                            _progressTracker.UpdateProgress(job.Url, false, false, -1);
-                        }
-                    }
-                }
-                else
-                {
-                    _progressTracker.UpdateProgress(job.Url, false, false, -1);
-                    Logger.Error("Driver setup failed.");
-                }
+                ProcessJob(driver, job);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"ProcessSingleUrlAsync Error: {ex}");
+            }
+            finally
+            {
+                _progressTracker.UpdateProgress(job.Url, false, false, -1);
             }
 
             Logger.Debug($"WebDriverService Disposed | {job.Url} | {job.Iteration}");
@@ -116,6 +114,8 @@ namespace InvenAdClicker.processing
         {
             string originalWindow = driver.CurrentWindowHandle;
             driver.Navigate().GoToUrl(job.Url);
+            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
+            wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
 
             for (int iteration = 0; iteration < job.Iteration; iteration++)
             {
@@ -154,24 +154,27 @@ namespace InvenAdClicker.processing
             var iframes = WaitForIframes(driver);
             foreach (var iframe in iframes)
             {
-                TryClickAdsInIframe(driver, iframe, url);
+                string iframeId = iframe.GetAttribute("id");
+                HashSet<string> clickedAdLinks = _adLinkCache.GetOrAdd(iframeId, _ => new HashSet<string>());
+
+                TryClickAdsInIframe(driver, iframe, url, _adLinkCache[iframeId]);
             }
         }
 
         private ReadOnlyCollection<IWebElement> WaitForIframes(IWebDriver driver)
         {
-            return new WebDriverWait(driver, TimeSpan.FromSeconds(60))
+            return new WebDriverWait(driver, TimeSpan.FromSeconds(20))
                 .Until(ExpectedConditions.PresenceOfAllElementsLocatedBy(By.CssSelector("iframe[id^='comAd']")));
         }
 
-        private void TryClickAdsInIframe(IWebDriver driver, IWebElement iframe, string url)
+        private void TryClickAdsInIframe(IWebDriver driver, IWebElement iframe, string url, HashSet<string> clickedAdLinks)
         {
             try
             {
                 driver.SwitchTo().Frame(iframe);
-                ClickAds(driver);
+                ClickAds(driver, clickedAdLinks);
                 driver.SwitchTo().DefaultContent();
-                Thread.Sleep(_appSettings.ClickIframeInterval); // ClickIframeInterval
+                Thread.Sleep(_appSettings.ClickIframeInterval);
             }
             catch (Exception e)
             {
@@ -181,14 +184,18 @@ namespace InvenAdClicker.processing
             }
         }
 
-        private void ClickAds(IWebDriver driver)
+        private void ClickAds(IWebDriver driver, HashSet<string> clickedAdLinks)
         {
             var adLinks = driver.FindElements(By.TagName("a"))
                 .Where(link => link.GetAttribute("href") != null);
 
             foreach (var link in adLinks)
             {
-                ((IJavaScriptExecutor)driver).ExecuteScript($"window.open('{link.GetAttribute("href")}');");
+                string href = link.GetAttribute("href");
+                if (clickedAdLinks.Add(href))
+                {
+                    ((IJavaScriptExecutor)driver).ExecuteScript($"window.open('{href}');");
+                }
             }
         }
 
