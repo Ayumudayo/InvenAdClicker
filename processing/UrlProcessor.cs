@@ -144,7 +144,6 @@ namespace InvenAdClicker.processing
             catch (Exception ex)
             {
                 Logger.Error($"Iteration Error: {ex}");
-                _progressTracker.UpdateProgress(url, false, true);
                 return false;
             }
         }
@@ -155,9 +154,18 @@ namespace InvenAdClicker.processing
             foreach (var iframe in iframes)
             {
                 string iframeId = iframe.GetAttribute("id");
-                HashSet<string> clickedAdLinks = _adLinkCache.GetOrAdd(iframeId, _ => new HashSet<string>());
-
-                TryClickAdsInIframe(driver, iframe, url, _adLinkCache[iframeId]);
+                if (_adLinkCache.TryGetValue(iframeId, out HashSet<string> clickedAdLinks))
+                {
+                    TryClickAdsInIframe(driver, iframe, url, clickedAdLinks);
+                }
+                else
+                {
+                    clickedAdLinks = new HashSet<string>();
+                    if (_adLinkCache.TryAdd(iframeId, clickedAdLinks))
+                    {
+                        TryClickAdsInIframe(driver, iframe, url, clickedAdLinks);
+                    }
+                }
             }
         }
 
@@ -201,10 +209,12 @@ namespace InvenAdClicker.processing
 
         private void CloseTabs(IWebDriver driver, string originalWindow)
         {
-            var extraHandles = driver.WindowHandles.Where(handle => handle != originalWindow);
-            foreach (var handle in extraHandles)
+            foreach (var handle in driver.WindowHandles)
             {
-                driver.SwitchTo().Window(handle).Close();
+                if (handle != originalWindow)
+                {
+                    driver.SwitchTo().Window(handle).Close();
+                }
             }
             driver.SwitchTo().Window(originalWindow);
         }
