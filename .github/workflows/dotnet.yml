@@ -35,7 +35,6 @@ jobs:
       with:
         filename: InvenAdClicker.zip
         directory: ./publish
-        path: ./InvenAdClicker.zip
         
     - name: Bump version and push tag
       id: tag_version
@@ -47,7 +46,7 @@ jobs:
     - name: Create Release
       uses: ncipollo/release-action@v1
       with:
-        artifacts: "./InvenAdClicker.zip"
+        artifacts: "./publish/InvenAdClicker.zip"
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: ${{ steps.tag_version.outputs.new_tag }}
         release_name: Release ${{ steps.tag_version.outputs.new_tag }}
