@@ -36,8 +36,16 @@ jobs:
         filename: InvenAdClicker.zip
         directory: ./publish
         
+    - name: Bump version and push tag
+      uses: anothrNick/github-tag-action@1.67.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEFAULT_BUMP: patch
+        
     - name: Create Release
       uses: ncipollo/release-action@v1
       with:
         artifacts: "InvenAdClicker.zip"
         token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ steps.tag_version.outputs.new_tag }}
+        release_name: Release ${{ steps.tag_version.outputs.new_tag }}
