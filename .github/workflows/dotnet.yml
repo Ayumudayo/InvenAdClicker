@@ -31,7 +31,7 @@ jobs:
       run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
       
     - name: Zip Release
-      uses: TheDoctor0/zip-release@v0.6.2
+      uses: thedoctor0/zip-release@0.7.6
       with:
         filename: InvenAdClicker.zip
         directory: ./publish
