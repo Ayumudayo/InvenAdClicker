@@ -84,7 +84,7 @@ namespace InvenAdClicker.processing
             return false;
         }
 
-        public bool SetupAndLogin(out IWebDriver driver)
+        public bool SetupAndLogin(out IWebDriver driver, CancellationToken cancellationToken)
         {
             switch (_browserType.ToLower())
             {
@@ -121,6 +121,12 @@ namespace InvenAdClicker.processing
                     driver = _driver;
                     return true;
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Login canceled.");
+                driver = null;
+                return false;
             }
             catch (Exception ex)
             {

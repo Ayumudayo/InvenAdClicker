@@ -1,6 +1,3 @@
-# This workflow will build a .NET project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
-
 name: .NET
 
 on:
@@ -12,16 +9,35 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-
+    
     steps:
     - uses: actions/checkout@v4
+      
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
+        
     - name: Restore dependencies
       run: dotnet restore InvenAdClicker.sln
+      
     - name: Build
       run: dotnet build InvenAdClicker.sln --no-restore
+      
     - name: Test
       run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
+      
+    - name: Publish
+      run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
+      
+    - name: Zip Release
+      uses: TheDoctor0/zip-release@v0.6.2
+      with:
+        filename: InvenAdClicker.zip
+        directory: ./publish
+        
+    - name: Create Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "InvenAdClicker.zip"
+        token: ${{ secrets.GITHUB_TOKEN }}

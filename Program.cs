@@ -6,9 +6,19 @@ namespace InvenAdClicker
 {
     class Program
     {
-        private static bool isPassed = false;
+        private static CancellationTokenSource _cancellationTokenSource;
+
         public static async Task Main()
         {
+            _cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = _cancellationTokenSource.Token;
+
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                e.Cancel = true;
+                _cancellationTokenSource.Cancel();
+            };
+
             Logger.Info("BEGIN==========================================");
             Logger.Info("Check credential...");
             Console.WriteLine("Check credential...");
@@ -24,7 +34,7 @@ namespace InvenAdClicker
                     while (true)
                     {
                         IWebDriver driver = null;
-                        if (!wd.SetupAndLogin(out driver))
+                        if (!wd.SetupAndLogin(out driver, cancellationToken))
                         {
                             Logger.Info("Failed to login.");
                             Console.WriteLine("Failed to login. Enter new credential.");
@@ -44,7 +54,7 @@ namespace InvenAdClicker
 
             Logger.Info("Initializing...");
             UrlProcessor _pr = new UrlProcessor();
-            await _pr.StartProcessing();
+            await _pr.StartProcessing(cancellationToken);
             Logger.Info("END============================================");
         }
     }

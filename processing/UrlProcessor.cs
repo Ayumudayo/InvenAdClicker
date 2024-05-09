@@ -11,6 +11,8 @@ using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
 using System.Collections.Concurrent;
+using static System.Net.Mime.MediaTypeNames;
+using System.Text.RegularExpressions;
 
 namespace InvenAdClicker.processing
 {
@@ -29,15 +31,15 @@ namespace InvenAdClicker.processing
             Logger.Info($"UrlProcessor Initialized. Iteration: {_appSettings.MaxIter} / Set: {_appSettings.MaxSet} / Worker: {_appSettings.MaxWorker}");
         }
 
-        public async Task StartProcessing()
+        public async Task StartProcessing(CancellationToken cancellationToken)
         {
             StartProgressDisplay();
-            await ProcessUrlsAsync();
+            await ProcessUrlsAsync(cancellationToken);
         }
 
         private void StartProgressDisplay() => Task.Run(() => _progressTracker.PrintProgress());
 
-        private async Task ProcessUrlsAsync()
+        private async Task ProcessUrlsAsync(CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             using (var maxDegreeOfParallelism = new SemaphoreSlim(_appSettings.MaxWorker))
@@ -46,41 +48,50 @@ namespace InvenAdClicker.processing
 
                 while (!_jobManager.IsEmpty() || tasks.Any(t => !t.IsCompleted))
                 {
-                    if (_jobManager.Dequeue(out Job job))
-                    {
-                        await maxDegreeOfParallelism.WaitAsync();
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                        tasks.Add(Task.Run(() =>
+                    try
+                    {
+                        if (_jobManager.Dequeue(out Job job))
                         {
-                            try
+                            await maxDegreeOfParallelism.WaitAsync(cancellationToken);
+
+                            tasks.Add(Task.Run(() =>
                             {
-                                using (var driverService = new WebDriverService())
+                                try
                                 {
-                                    if (driverService.SetupAndLogin(out IWebDriver driver))
+                                    using (var driverService = new WebDriverService())
                                     {
-                                        ProcessSingleUrlAsync(driver, job);
-                                    }
-                                    else
-                                    {
-                                        _progressTracker.UpdateProgress(job.Url, false, false, -1);
-                                        Logger.Error("Driver setup failed.");
+                                        if (driverService.SetupAndLogin(out IWebDriver driver, cancellationToken))
+                                        {
+                                            ProcessSingleUrlAsync(driver, job, cancellationToken);
+                                        }
+                                        else
+                                        {
+                                            _progressTracker.UpdateProgress(job.Url, false, false, -1);
+                                            Logger.Error("Driver setup failed.");
+                                        }
                                     }
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Error($"ProcessUrlsAsync Error: {ex}");
-                            }
-                            finally
-                            {
-                                maxDegreeOfParallelism.Release();
-                            }
-                        }));
+                                catch (Exception ex)
+                                {
+                                    Logger.Error($"ProcessUrlsAsync Error: {ex}");
+                                }
+                                finally
+                                {
+                                    maxDegreeOfParallelism.Release();
+                                }
+                            }, cancellationToken));
+                        }
+                        else
+                        {
+                            tasks.RemoveAll(t => t.IsCompleted);
+                            await Task.Delay(100, cancellationToken);
+                        }
                     }
-                    else
+                    catch (OperationCanceledException)
                     {
-                        tasks.RemoveAll(t => t.IsCompleted);
-                        await Task.Yield();
+                        Logger.Info("ProcessUrlsAsync canceled.");
                     }
                 }
 
@@ -90,13 +101,17 @@ namespace InvenAdClicker.processing
             PrintCompletionLog(stopwatch);
         }
 
-        private void ProcessSingleUrlAsync(IWebDriver driver, Job job)
+        private void ProcessSingleUrlAsync(IWebDriver driver, Job job, CancellationToken cancellationToken)
         {
             _progressTracker.UpdateProgress(job.Url, false, false, 1);
 
             try
             {
-                ProcessJob(driver, job);
+                ProcessJob(driver, job, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info($"ProcessSingleUrlAsync canceled. {job.Url}");
             }
             catch (Exception ex)
             {
@@ -110,7 +125,7 @@ namespace InvenAdClicker.processing
             Logger.Debug($"WebDriverService Disposed | {job.Url} | {job.Iteration}");
         }
 
-        private void ProcessJob(IWebDriver driver, Job job)
+        private void ProcessJob(IWebDriver driver, Job job, CancellationToken cancellationToken)
         {
             string originalWindow = driver.CurrentWindowHandle;
             driver.Navigate().GoToUrl(job.Url);
@@ -119,7 +134,9 @@ namespace InvenAdClicker.processing
 
             for (int iteration = 0; iteration < job.Iteration; iteration++)
             {
-                if (!TryProcessIteration(driver, job.Url, originalWindow))
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!TryProcessIteration(driver, job.Url, originalWindow, cancellationToken))
                 {
                     int remaining = job.Iteration - iteration - 1;
                     _jobManager.AppendJob(job.Url, remaining);
@@ -129,17 +146,22 @@ namespace InvenAdClicker.processing
             }
         }
 
-        private bool TryProcessIteration(IWebDriver driver, string url, string originalWindow)
+        private bool TryProcessIteration(IWebDriver driver, string url, string originalWindow, CancellationToken cancellationToken)
         {
             try
             {
-                FindAndClickAds(driver, url);
+                FindAndClickAds(driver, url, cancellationToken);
                 Thread.Sleep(_appSettings.IterationInterval); // IterationInterval
                 CloseTabs(driver, originalWindow);
 
                 _progressTracker.UpdateProgress(url, true);
                 driver.Navigate().Refresh();
                 return true;
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info($"Iteration canceled. {url}");
+                return false;
             }
             catch (Exception ex)
             {
@@ -148,23 +170,32 @@ namespace InvenAdClicker.processing
             }
         }
 
-        private void FindAndClickAds(IWebDriver driver, string url)
+        private void FindAndClickAds(IWebDriver driver, string url, CancellationToken cancellationToken)
         {
             var iframes = WaitForIframes(driver);
             foreach (var iframe in iframes)
             {
-                string iframeId = iframe.GetAttribute("id");
-                if (_adLinkCache.TryGetValue(iframeId, out HashSet<string> clickedAdLinks))
+                try
                 {
-                    TryClickAdsInIframe(driver, iframe, url, clickedAdLinks);
-                }
-                else
-                {
-                    clickedAdLinks = new HashSet<string>();
-                    if (_adLinkCache.TryAdd(iframeId, clickedAdLinks))
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string iframeId = iframe.GetAttribute("id");
+                    if (_adLinkCache.TryGetValue(iframeId, out HashSet<string> clickedAdLinks))
                     {
                         TryClickAdsInIframe(driver, iframe, url, clickedAdLinks);
                     }
+                    else
+                    {
+                        clickedAdLinks = new HashSet<string>();
+                        if (_adLinkCache.TryAdd(iframeId, clickedAdLinks))
+                        {
+                            TryClickAdsInIframe(driver, iframe, url, clickedAdLinks);
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    Logger.Info($"FindAndClickAds canceled. {url}");
+                    return;
                 }
             }
         }
@@ -200,9 +231,16 @@ namespace InvenAdClicker.processing
             foreach (var link in adLinks)
             {
                 string href = link.GetAttribute("href");
-                if (clickedAdLinks.Add(href))
+                string pattern = @"/(?:x\d+|Top\d+)/.*";
+                var match = Regex.Match(href, pattern);
+                if (clickedAdLinks.Add(match.Value))
                 {
                     ((IJavaScriptExecutor)driver).ExecuteScript($"window.open('{href}');");
+                    Logger.Debug($"Clicked '{match.Value}' : {href}");
+                }
+                else
+                {
+                    Logger.Debug($"Click Passed : {href}");
                 }
             }
         }
