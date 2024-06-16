@@ -1,6 +1,9 @@
 ﻿using InvenAdClicker.helper;
 using InvenAdClicker.processing;
 using OpenQA.Selenium;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InvenAdClicker
 {
@@ -25,26 +28,27 @@ namespace InvenAdClicker
 
             using (Encryption en = new())
             {
-                {
-                    en.LoadAndValidateCredentials(out string id, out string pw);
-                }
+                en.LoadAndValidateCredentials(out string id, out string pw);
 
-                using (WebDriverService wd = new WebDriverService())
+                bool loginSuccess = false;
+
+                while (!loginSuccess)
                 {
-                    while (true)
+                    using (WebDriverService wd = new WebDriverService())
                     {
-                        IWebDriver driver = null;
-                        if (!wd.SetupAndLogin(out driver, cancellationToken))
+                        if (!wd.SetupAndLogin(out IWebDriver driver, cancellationToken))
                         {
                             Logger.Info("Failed to login.");
                             Console.WriteLine("Failed to login. Enter new credential.");
                             en.EnterCredentials();
+                            en.LoadAndValidateCredentials(out id, out pw);
                         }
                         else
                         {
                             Logger.Info("Login passed.");
                             Console.WriteLine("Login passed.");
-                            break;
+                            loginSuccess = true;
+                            driver.Quit(); // Close the browser after successful login check
                         }
                     }
                 }
