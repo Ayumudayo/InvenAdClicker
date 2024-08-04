@@ -30,57 +30,48 @@ namespace InvenAdClicker.processing
         {
             var options = new ChromeOptions();
 
-            options.AddArguments("--headless", "--incognito");
-            // --headless: GUI 없이 브라우저를 백그라운드에서 실행
-            // --incognito: 시크릿 모드로 실행, 쿠키와 캐시를 저장하지 않음
+            // 기본 설정
+            options.AddArguments(
+                "--headless",
+                "--incognito",
+                "--disable-extensions",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-software-rasterizer",
+                "--disable-browser-side-navigation",
+                "--disable-infobars",
+                "--disable-notifications",
+                "--disable-popup-blocking",
+                "--blink-settings=imagesEnabled=false",
+                "--proxy-server='direct://'",
+                "--proxy-bypass-list=*",
+                "--disable-blink-features=AutomationControlled"
+            );
 
-            options.AddArgument("--disable-extensions");
-            // 모든 Chrome 확장 프로그램을 비활성화하여 리소스 사용 감소
+            // 페이지 로드 전략 설정
+            //options.PageLoadStrategy = PageLoadStrategy.None;
 
-            options.AddArgument("--disable-gpu");
-            // GPU 하드웨어 가속을 비활성화, 일부 시스템에서 안정성 향상
+            // 사용자 프로필 설정
+            var prefs = new Dictionary<string, object>
+            {
+                ["profile.default_content_settings.images"] = 2,
+                ["profile.managed_default_content_settings.stylesheets"] = 2,
+                ["profile.managed_default_content_settings.fonts"] = 2,
+                ["profile.managed_default_content_settings.videos"] = 2,
+                ["profile.managed_default_content_settings.audio"] = 2,
+                ["profile.managed_default_content_settings.plugins"] = 2,
+                ["profile.managed_default_content_settings.svg"] = 2,
+                ["profile.managed_default_content_settings.javascript"] = 1, // 1로 설정하여 JavaScript 활성화
+                ["profile.default_content_settings.cookies"] = 2,
+                ["profile.managed_default_content_settings.geolocation"] = 2,
+                ["profile.managed_default_content_settings.media_stream"] = 2
+            };
 
-            options.AddArgument("--no-sandbox");
-            // 샌드박스 보안 기능을 비활성화, 주의: 보안상 위험할 수 있음
+            options.AddUserProfilePreference("profile.default_content_settings", prefs);
 
-            options.AddArgument("--disable-dev-shm-usage");
-            // /dev/shm 파티션 사용을 비활성화, 메모리 부족 문제 해결에 도움
-
-            options.AddArgument("--disable-software-rasterizer");
-            // 소프트웨어 래스터라이저를 비활성화, 그래픽 처리 최소화
-
-            options.AddArgument("--disable-browser-side-navigation");
-            // 브라우저 측 탐색을 비활성화, 안정성 향상
-
-            options.AddArgument("--disable-infobars");
-            // 정보 표시줄 비활성화 (예: "Chrome이 자동화된 테스트 소프트웨어에 의해 제어되고 있습니다" 메시지)
-
-            options.AddArgument("--disable-notifications");
-            // 웹 알림을 비활성화
-
-            options.AddArgument("--disable-popup-blocking");
-            // 팝업 차단을 비활성화, 필요한 경우 팝업 허용
-
-            options.AddUserProfilePreference("profile.default_content_settings.images", 2);
-            // 이미지 로딩 비활성화 (2는 차단을 의미)
-
-            options.AddUserProfilePreference("profile.managed_default_content_settings.stylesheets", 2);
-            // CSS 스타일시트 로딩 비활성화
-
-            options.AddUserProfilePreference("profile.managed_default_content_settings.fonts", 2);
-            // 웹 폰트 로딩 비활성화
-
-            options.AddUserProfilePreference("profile.managed_default_content_settings.videos", 2);
-            // 비디오 로딩 비활성화
-
-            options.AddUserProfilePreference("profile.managed_default_content_settings.audio", 2);
-            // 오디오 로딩 비활성화
-
-            options.AddUserProfilePreference("profile.managed_default_content_settings.plugins", 2);
-            // 플러그인 (예: Flash) 비활성화
-
-            options.AddUserProfilePreference("profile.managed_default_content_settings.svg", 2);
-            // SVG 이미지 로딩 비활성화
+            // 로깅 설정
+            //options.SetLoggingPreference(LogType.Performance, LogLevel.All);
 
             return options;
         }
