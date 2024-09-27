@@ -1,10 +1,15 @@
-﻿namespace InvenAdClicker.@struct;
+﻿// InvenAdClicker.@struct.AppSettings.cs
 
-public class AppSettings
+namespace InvenAdClicker.@struct
 {
-    public int MaxIter { get; set; }
-    public int MaxWorker { get; set; }
-    public int MaxSet { get; set; }
-    public int IterationInterval { get; set; }
-    public int ClickIframeInterval { get; set; }
+    public class AppSettings
+    {
+        public int MaxIter { get; set; }
+        public int MaxWorker { get; set; }
+        public int MaxSet { get; set; }
+        public int IterationInterval { get; set; }
+        public int ClickIframeInterval { get; set; }
+        public int ClickAdInterval { get; set; } // New setting
+    }
+
 }

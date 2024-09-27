@@ -3,9 +3,13 @@ using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium;
 using SeleniumExtras.WaitHelpers;
+using InvenAdClicker.Helper;
+using System;
+using System.Collections.Generic;
+using System.Threading;
 using InvenAdClicker.helper;
 
-namespace InvenAdClicker.processing
+namespace InvenAdClicker.Processing
 {
     public class WebDriverService : IDisposable
     {
@@ -17,7 +21,7 @@ namespace InvenAdClicker.processing
 
         public WebDriverService()
         {
-            _browserType = "chrome";
+            _browserType = "chrome"; // 설정에서 가져오도록 수정 가능
             AppDomain.CurrentDomain.ProcessExit += (sender, e) => CleanUp();
             Console.CancelKeyPress += (sender, e) =>
             {
@@ -50,7 +54,7 @@ namespace InvenAdClicker.processing
             );
 
             // 페이지 로드 전략 설정
-            //options.PageLoadStrategy = PageLoadStrategy.None;
+            //options.PageLoadStrategy = PageLoadStrategy.Eager;
 
             // 사용자 프로필 설정
             var prefs = new Dictionary<string, object>
@@ -62,16 +66,13 @@ namespace InvenAdClicker.processing
                 ["profile.managed_default_content_settings.audio"] = 2,
                 ["profile.managed_default_content_settings.plugins"] = 2,
                 ["profile.managed_default_content_settings.svg"] = 2,
-                ["profile.managed_default_content_settings.javascript"] = 1, // 1로 설정하여 JavaScript 활성화
+                ["profile.managed_default_content_settings.javascript"] = 1,
                 ["profile.default_content_settings.cookies"] = 2,
                 ["profile.managed_default_content_settings.geolocation"] = 2,
                 ["profile.managed_default_content_settings.media_stream"] = 2
             };
 
             options.AddUserProfilePreference("profile.default_content_settings", prefs);
-
-            // 로깅 설정
-            //options.SetLoggingPreference(LogType.Performance, LogLevel.All);
 
             return options;
         }
@@ -90,12 +91,6 @@ namespace InvenAdClicker.processing
             _chromeService.SuppressInitialDiagnosticInformation = true;
             _chromeService.HideCommandPromptWindow = true;
 
-            //string logFileName = $"chromedriver_{DateTime.Now:yyyy-MM-dd}.log";
-            //string logFilePath = System.IO.Path.Combine("logs/ChromeDriver", logFileName);
-
-            //_chromeService.LogPath = logFilePath;
-            //_chromeService.EnableAppendLog = true;
-
             return _chromeService;
         }
 
@@ -106,9 +101,6 @@ namespace InvenAdClicker.processing
             _firefoxService = FirefoxDriverService.CreateDefaultService(geckodriverPath);
             _firefoxService.SuppressInitialDiagnosticInformation = true;
             _firefoxService.HideCommandPromptWindow = true;
-
-            //string logFileName = $"firefoxdriver_{DateTime.Now:yyyy-MM-dd}.log";
-            //string logFilePath = System.IO.Path.Combine("logs/FirefoxDriver", logFileName);
 
             return _firefoxService;
         }
@@ -135,20 +127,20 @@ namespace InvenAdClicker.processing
 
         public bool SetupAndLogin(out IWebDriver driver, CancellationToken cancellationToken)
         {
-            switch (_browserType.ToLower())
-            {
-                case "chrome":
-                    _driver = new ChromeDriver(GetChromeDriverService(), GetChromeOptions());
-                    break;
-                case "firefox":
-                    _driver = new FirefoxDriver(GetFirefoxDriverService(), GetFirefoxOptions());
-                    break;
-                default:
-                    throw new ArgumentException($"Unsupported browser type: {_browserType}");
-            }
-
             try
             {
+                switch (_browserType.ToLower())
+                {
+                    case "chrome":
+                        _driver = new ChromeDriver(GetChromeDriverService(), GetChromeOptions());
+                        break;
+                    case "firefox":
+                        _driver = new FirefoxDriver(GetFirefoxDriverService(), GetFirefoxOptions());
+                        break;
+                    default:
+                        throw new ArgumentException($"Unsupported browser type: {_browserType}");
+                }
+
                 WebDriverWait wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(10));
                 _driver.Navigate().GoToUrl("https://member.inven.co.kr/user/scorpio/mlogin");
                 using (Encryption _en = new Encryption())
@@ -163,6 +155,8 @@ namespace InvenAdClicker.processing
                 {
                     Logger.Error("Login failed.");
                     driver = null;
+                    _driver.Quit();
+                    _driver.Dispose();
                     return false;
                 }
                 else
@@ -175,12 +169,16 @@ namespace InvenAdClicker.processing
             {
                 Logger.Info("Login canceled.");
                 driver = null;
+                _driver?.Quit();
+                _driver?.Dispose();
                 return false;
             }
             catch (Exception ex)
             {
                 Logger.Error($"Exception during login: {ex.Message}");
                 driver = null;
+                _driver?.Quit();
+                _driver?.Dispose();
                 return false;
             }
         }
