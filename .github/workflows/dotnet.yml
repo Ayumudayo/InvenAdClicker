@@ -2,14 +2,12 @@ name: .NET
 
 on:
   push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
     - uses: actions/checkout@v4
       
@@ -27,16 +25,20 @@ jobs:
     - name: Test
       run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
       
+    # 메인 브랜치에 푸시될 때만 실행되는 스텝들
     - name: Publish
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
       
     - name: Zip Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: thedoctor0/zip-release@0.7.6
       with:
         filename: InvenAdClicker.zip
         directory: ./publish
         
     - name: Bump version and push tag
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       id: tag_version
       uses: mathieudutour/github-tag-action@v6.2
       with:
@@ -44,6 +46,7 @@ jobs:
         DEFAULT_BUMP: patch
         
     - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: ncipollo/release-action@v1
       with:
         artifacts: "./publish/InvenAdClicker.zip"
