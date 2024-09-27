@@ -1,14 +1,17 @@
-﻿using System.Collections.Concurrent;
-using InvenAdClicker.helper;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Linq;
 using InvenAdClicker.@struct;
+using InvenAdClicker.helper;
 
-namespace InvenAdClicker.processing
+namespace InvenAdClicker.Processing
 {
     public enum ProgressStatus
     {
         Waiting,
-        Running,
-        Suspended,
+        Collecting,
+        Collected,
+        Clicking,
         Finished,
         Error
     }
@@ -19,7 +22,12 @@ namespace InvenAdClicker.processing
         public int Iteration { get; set; }
         public int ErrorCount { get; set; }
         public int ThreadCount { get; set; }
+
+        public int TotalAdsCollected { get; set; }
+        public int AdsClicked { get; set; }
+        public int PendingClicks { get; set; }
     }
+
 
     public class ProgressTracker
     {
@@ -35,22 +43,36 @@ namespace InvenAdClicker.processing
             _settings = SettingsManager.LoadAppSettings();
         }
 
-        public void UpdateProgress(string url, bool incrementIteration = false, bool incrementError = false, int threadCountChange = 0)
+        public void UpdateProgress(string url, ProgressStatus? status = null, bool incrementIteration = false, bool incrementError = false, int threadCountChange = 0, int adsCollectedChange = 0, int adsClickedChange = 0, int pendingClicksChange = 0)
         {
             _progressTracker.AddOrUpdate(url,
-                (key) => new ProgressInfo { Status = ProgressStatus.Waiting, Iteration = 0, ErrorCount = 0, ThreadCount = 0 },
+                (key) => new ProgressInfo
+                {
+                    Status = status ?? ProgressStatus.Waiting,
+                    Iteration = 0,
+                    ErrorCount = 0,
+                    ThreadCount = 0,
+                    TotalAdsCollected = 0,
+                    AdsClicked = 0,
+                    PendingClicks = 0
+                },
                 (key, oldValue) =>
                 {
+                    if (status.HasValue) oldValue.Status = status.Value;
                     if (incrementIteration) oldValue.Iteration++;
                     if (incrementError) oldValue.ErrorCount++;
                     oldValue.ThreadCount += threadCountChange;
                     oldValue.ThreadCount = Math.Max(oldValue.ThreadCount, 0);
 
-                    if (incrementError) oldValue.Status = ProgressStatus.Error;
-                    else if (oldValue.Iteration == _settings.MaxIter) oldValue.Status = ProgressStatus.Finished;
-                    else if (oldValue.ThreadCount > 0) oldValue.Status = ProgressStatus.Running;
-                    else if (oldValue.Iteration > 0) oldValue.Status = ProgressStatus.Suspended;
-                    else oldValue.Status = ProgressStatus.Waiting;
+                    oldValue.TotalAdsCollected += adsCollectedChange;
+                    oldValue.AdsClicked += adsClickedChange;
+                    oldValue.PendingClicks += pendingClicksChange;
+
+                    // PendingClicks가 0이고 상태가 Clicking이면 Finished로 업데이트
+                    if (oldValue.PendingClicks == 0 && oldValue.Status == ProgressStatus.Clicking)
+                    {
+                        oldValue.Status = ProgressStatus.Finished;
+                    }
 
                     return oldValue;
                 });
@@ -58,13 +80,14 @@ namespace InvenAdClicker.processing
 
         public void PrintProgress()
         {
-            int urlMaxLength = _progressTracker.Keys.Max(url => url.Length) + 2;
+            int urlMaxLength = _progressTracker.Keys.Any() ? _progressTracker.Keys.Max(url => url.Length) + 2 : 20;
             int statusMaxLength = Enum.GetNames(typeof(ProgressStatus)).Max(name => name.Length) + 2;
-            int iterationMaxLength = 10; // "Iteration".Length + 여유 공간
-            int errorCountMaxLength = 7; // "ErrCnt".Length + 여유 공간
-            int threadCountMaxLength = 8; // "ThrdCnt".Length + 여유 공간
+            int iterationMaxLength = 15;
+            int clicksMaxLength = 10;
+            int errorCountMaxLength = 10;
+            int threadCountMaxLength = 10;
 
-            // 커서 위치 저장 및 초기 설정
+            // 초기 설정
             Console.Clear();
             bool isInitialPrint = true;
             int cursorTop = Console.CursorTop;
@@ -74,8 +97,8 @@ namespace InvenAdClicker.processing
             {
                 if (isInitialPrint)
                 {
-                    Console.WriteLine($"{"URL".PadRight(urlMaxLength)} {"Status".PadRight(statusMaxLength)} {"Iteration".PadRight(iterationMaxLength)} {"ErrCnt".PadRight(errorCountMaxLength)} {"ThrdCnt".PadRight(threadCountMaxLength)}");
-                    Console.WriteLine(new string('-', urlMaxLength + statusMaxLength + iterationMaxLength + errorCountMaxLength + threadCountMaxLength));
+                    Console.WriteLine($"{"URL".PadRight(urlMaxLength)} {"Status".PadRight(statusMaxLength)} {"Iteration".PadRight(iterationMaxLength)} {"Clicks".PadRight(clicksMaxLength)} {"ErrorCount".PadRight(errorCountMaxLength)} {"ThreadCount".PadRight(threadCountMaxLength)}");
+                    Console.WriteLine(new string('-', urlMaxLength + statusMaxLength + iterationMaxLength + clicksMaxLength + errorCountMaxLength + threadCountMaxLength));
                     isInitialPrint = false;
                 }
 
@@ -87,11 +110,12 @@ namespace InvenAdClicker.processing
                     var info = entry.Value;
                     string status = info.Status.ToString().PadRight(statusMaxLength);
                     string iteration = $"{info.Iteration}/{_settings.MaxIter}".PadRight(iterationMaxLength);
+                    string clicks = $"{info.AdsClicked}/{info.TotalAdsCollected}".PadRight(clicksMaxLength);
                     string errorCount = info.ErrorCount.ToString().PadRight(errorCountMaxLength);
                     string threadCount = info.ThreadCount.ToString().PadRight(threadCountMaxLength);
 
                     Console.ForegroundColor = GetColorForStatus(info.Status);
-                    Console.WriteLine($"{url} {status} {iteration} {errorCount} {threadCount}");
+                    Console.WriteLine($"{url} {status} {iteration} {clicks} {errorCount} {threadCount}");
                     Console.ResetColor();
                 }
 
@@ -99,21 +123,14 @@ namespace InvenAdClicker.processing
             }
         }
 
-        //public ProgressInfo GetUrlInfo(string url)
-        //{
-        //    ProgressInfo info;
-        //    _progressTracker.TryGetValue(url, out info);
-        //    return info;
-        //}
-
         private static ConsoleColor GetColorForStatus(ProgressStatus status)
         {
             return status switch
             {
-                ProgressStatus.Running => ConsoleColor.Green,
-                ProgressStatus.Suspended => ConsoleColor.Magenta,
-                ProgressStatus.Waiting => ConsoleColor.Yellow,
-                ProgressStatus.Finished => ConsoleColor.Cyan,
+                ProgressStatus.Collecting => ConsoleColor.Yellow,
+                ProgressStatus.Collected => ConsoleColor.Cyan,
+                ProgressStatus.Clicking => ConsoleColor.Green,
+                ProgressStatus.Finished => ConsoleColor.Magenta,
                 ProgressStatus.Error => ConsoleColor.Red,
                 _ => ConsoleColor.White,
             };

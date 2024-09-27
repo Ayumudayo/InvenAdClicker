@@ -1,9 +1,11 @@
-﻿using InvenAdClicker.helper;
-using InvenAdClicker.processing;
+﻿using InvenAdClicker.Helper;
+using InvenAdClicker.Processing;
 using OpenQA.Selenium;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
+using InvenAdClicker.helper;
 
 namespace InvenAdClicker
 {
@@ -21,6 +23,8 @@ namespace InvenAdClicker
                 e.Cancel = true;
                 _cancellationTokenSource.Cancel();
             };
+
+            Stopwatch programStopwatch = Stopwatch.StartNew(); // 프로그램 전체 시간 측정 시작
 
             Logger.Info("BEGIN==========================================");
             Logger.Info("Check credential...");
@@ -48,18 +52,22 @@ namespace InvenAdClicker
                             Logger.Info("Login passed.");
                             Console.WriteLine("Login passed.");
                             loginSuccess = true;
-                            driver.Quit(); // Close the browser after successful login check
+                            driver.Quit(); // 로그인 확인 후 브라우저 닫기
                         }
                     }
                 }
 
-                Thread.Sleep(3000);
+                await Task.Delay(3000); // Thread.Sleep에서 await Task.Delay로 변경
             }
 
             Logger.Info("Initializing...");
-            UrlProcessor _pr = new UrlProcessor();
-            await _pr.StartProcessing(cancellationToken);
+            UrlProcessor processor = new UrlProcessor();
+            await processor.StartProcessingAsync(cancellationToken);
             Logger.Info("END============================================");
+
+            programStopwatch.Stop(); // 프로그램 전체 시간 측정 종료
+            Logger.Info($"Total Execution Time: {programStopwatch.Elapsed.TotalSeconds} seconds.");
+            Console.WriteLine($"Total Execution Time: {programStopwatch.Elapsed.TotalSeconds} seconds.");
         }
     }
 }
