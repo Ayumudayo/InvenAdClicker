@@ -66,8 +66,10 @@ namespace InvenAdClicker
             Logger.Info("END============================================");
 
             programStopwatch.Stop(); // 프로그램 전체 시간 측정 종료
-            Logger.Info($"Total Execution Time: {programStopwatch.Elapsed.TotalSeconds} seconds.");
-            Console.WriteLine($"Total Execution Time: {programStopwatch.Elapsed.TotalSeconds} seconds.");
+            var TotalMin = programStopwatch.Elapsed.TotalSeconds / 60;
+            var TotalSec = programStopwatch.Elapsed.TotalSeconds % 60;
+            Logger.Info($"Total Execution Time: {Math.Round(TotalMin)}Minute {Math.Round(TotalSec)}seconds.");
+            Console.WriteLine($"Total Execution Time: {Math.Round(TotalMin)}Minute {Math.Round(TotalSec)}seconds.");
         }
     }
 }

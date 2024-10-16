@@ -128,11 +128,11 @@ namespace InvenAdClicker.Processing
             return status switch
             {
                 ProgressStatus.Collecting => ConsoleColor.Yellow,
-                ProgressStatus.Collected => ConsoleColor.Cyan,
+                ProgressStatus.Collected => ConsoleColor.Magenta,
                 ProgressStatus.Clicking => ConsoleColor.Green,
-                ProgressStatus.Finished => ConsoleColor.Magenta,
+                ProgressStatus.Finished => ConsoleColor.Cyan,
                 ProgressStatus.Error => ConsoleColor.Red,
-                _ => ConsoleColor.White,
+                _ => ConsoleColor.DarkGray,
             };
         }
     }
