@@ -280,7 +280,7 @@ namespace InvenAdClicker.Processing
 
                     bool navigationSuccess = false;
                     int navigationRetryCount = 0;
-                    int maxNavigationRetries = 2; // 최대 재시도 횟수
+                    int maxNavigationRetries = 1; // 최대 재시도 횟수
                     TimeSpan retryDelay = TimeSpan.FromSeconds(3); // 재시도 간 대기 시간
 
                     while (!navigationSuccess && navigationRetryCount < maxNavigationRetries)
