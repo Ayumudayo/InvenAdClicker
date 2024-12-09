@@ -36,7 +36,7 @@ namespace InvenAdClicker.Processing
 
             // 기본 설정
             options.AddArguments(
-                "--headless",
+                "--headless=old",
                 "--incognito",
                 "--disable-extensions",
                 "--disable-gpu",
@@ -140,6 +140,10 @@ namespace InvenAdClicker.Processing
                     default:
                         throw new ArgumentException($"Unsupported browser type: {_browserType}");
                 }
+
+                // 타임아웃 설정 추가
+                _driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(10);
+                _driver.Manage().Timeouts().AsynchronousJavaScript = TimeSpan.FromSeconds(10);
 
                 WebDriverWait wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(10));
                 _driver.Navigate().GoToUrl("https://member.inven.co.kr/user/scorpio/mlogin");
