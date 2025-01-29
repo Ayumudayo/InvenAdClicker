@@ -36,7 +36,8 @@ namespace InvenAdClicker.Processing
 
             // 기본 설정
             options.AddArguments(
-                "--headless=old",
+                //"--headless=old",
+                "--headless",
                 "--incognito",
                 "--disable-extensions",
                 "--disable-gpu",
