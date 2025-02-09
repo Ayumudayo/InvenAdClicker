@@ -22,12 +22,10 @@ namespace InvenAdClicker.Processing
         public int Iteration { get; set; }
         public int ErrorCount { get; set; }
         public int ThreadCount { get; set; }
-
         public int TotalAdsCollected { get; set; }
         public int AdsClicked { get; set; }
         public int PendingClicks { get; set; }
     }
-
 
     public class ProgressTracker
     {
@@ -43,10 +41,18 @@ namespace InvenAdClicker.Processing
             _settings = SettingsManager.LoadAppSettings();
         }
 
-        public void UpdateProgress(string url, ProgressStatus? status = null, bool incrementIteration = false, bool incrementError = false, int threadCountChange = 0, int adsCollectedChange = 0, int adsClickedChange = 0, int pendingClicksChange = 0)
+        public void UpdateProgress(
+            string url,
+            ProgressStatus? status = null,
+            bool incrementIteration = false,
+            bool incrementError = false,
+            int threadCountChange = 0,
+            int adsCollectedChange = 0,
+            int adsClickedChange = 0,
+            int pendingClicksChange = 0)
         {
             _progressTracker.AddOrUpdate(url,
-                (key) => new ProgressInfo
+                key => new ProgressInfo
                 {
                     Status = status ?? ProgressStatus.Waiting,
                     Iteration = 0,
@@ -58,9 +64,12 @@ namespace InvenAdClicker.Processing
                 },
                 (key, oldValue) =>
                 {
-                    if (status.HasValue) oldValue.Status = status.Value;
-                    if (incrementIteration) oldValue.Iteration++;
-                    if (incrementError) oldValue.ErrorCount++;
+                    if (status.HasValue)
+                        oldValue.Status = status.Value;
+                    if (incrementIteration)
+                        oldValue.Iteration++;
+                    if (incrementError)
+                        oldValue.ErrorCount++;
                     oldValue.ThreadCount += threadCountChange;
                     oldValue.ThreadCount = Math.Max(oldValue.ThreadCount, 0);
 
@@ -68,11 +77,9 @@ namespace InvenAdClicker.Processing
                     oldValue.AdsClicked += adsClickedChange;
                     oldValue.PendingClicks += pendingClicksChange;
 
-                    // PendingClicks가 0이고 상태가 Clicking이면 Finished로 업데이트
+                    // 클릭 중(PendingClicks == 0 && 상태가 Clicking)이면 Finished로 업데이트
                     if (oldValue.PendingClicks == 0 && oldValue.Status == ProgressStatus.Clicking)
-                    {
                         oldValue.Status = ProgressStatus.Finished;
-                    }
 
                     return oldValue;
                 });
@@ -85,9 +92,8 @@ namespace InvenAdClicker.Processing
             int iterationMaxLength = 15;
             int clicksMaxLength = 10;
             int errorCountMaxLength = 10;
-            int threadCountMaxLength = 10;
+            int threadCountMaxLength = 12;
 
-            // 초기 설정
             Console.Clear();
             bool isInitialPrint = true;
             int cursorTop = Console.CursorTop;
@@ -97,8 +103,14 @@ namespace InvenAdClicker.Processing
             {
                 if (isInitialPrint)
                 {
-                    Console.WriteLine($"{"URL".PadRight(urlMaxLength)} {"Status".PadRight(statusMaxLength)} {"Iteration".PadRight(iterationMaxLength)} {"Clicks".PadRight(clicksMaxLength)} {"ErrorCount".PadRight(errorCountMaxLength)} {"ThreadCount".PadRight(threadCountMaxLength)}");
-                    Console.WriteLine(new string('-', urlMaxLength + statusMaxLength + iterationMaxLength + clicksMaxLength + errorCountMaxLength + threadCountMaxLength));
+                    Console.WriteLine(
+                        $"{"URL".PadRight(urlMaxLength)} " +
+                        $"{"Status".PadRight(statusMaxLength)} " +
+                        $"{"Iteration".PadRight(iterationMaxLength)} " +
+                        $"{"Clicks".PadRight(clicksMaxLength)} " +
+                        $"{"ErrorCount".PadRight(errorCountMaxLength)} " +
+                        $"{"ThreadCount".PadRight(threadCountMaxLength)}");
+                    Console.WriteLine(new string('-', urlMaxLength + statusMaxLength + iterationMaxLength + clicksMaxLength + errorCountMaxLength + threadCountMaxLength + 5));
                     isInitialPrint = false;
                 }
 
@@ -106,20 +118,20 @@ namespace InvenAdClicker.Processing
                 foreach (var entry in _progressTracker)
                 {
                     Console.SetCursorPosition(0, currentLine++);
-                    string url = entry.Key.PadRight(urlMaxLength);
+                    string urlStr = entry.Key.PadRight(urlMaxLength);
                     var info = entry.Value;
-                    string status = info.Status.ToString().PadRight(statusMaxLength);
-                    string iteration = $"{info.Iteration}/{_settings.MaxIter}".PadRight(iterationMaxLength);
-                    string clicks = $"{info.AdsClicked}/{info.TotalAdsCollected}".PadRight(clicksMaxLength);
-                    string errorCount = info.ErrorCount.ToString().PadRight(errorCountMaxLength);
-                    string threadCount = info.ThreadCount.ToString().PadRight(threadCountMaxLength);
+                    string statusStr = info.Status.ToString().PadRight(statusMaxLength);
+                    string iterationStr = $"{info.Iteration}/{_settings.MaxIter}".PadRight(iterationMaxLength);
+                    string clicksStr = $"{info.AdsClicked}/{info.TotalAdsCollected}".PadRight(clicksMaxLength);
+                    string errorCountStr = info.ErrorCount.ToString().PadRight(errorCountMaxLength);
+                    string threadCountStr = info.ThreadCount.ToString().PadRight(threadCountMaxLength);
 
                     Console.ForegroundColor = GetColorForStatus(info.Status);
-                    Console.WriteLine($"{url} {status} {iteration} {clicks} {errorCount} {threadCount}");
+                    Console.WriteLine($"{urlStr} {statusStr} {iterationStr} {clicksStr} {errorCountStr} {threadCountStr}");
                     Console.ResetColor();
                 }
 
-                Thread.Sleep(1000); // 1초 대기
+                Thread.Sleep(1000); // 1초마다 갱신
             }
         }
 

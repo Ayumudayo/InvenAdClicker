@@ -16,12 +16,13 @@ namespace InvenAdClicker.Processing
         private IWebDriver _driver;
         private ChromeDriverService _chromeService;
         private FirefoxDriverService _firefoxService;
-        private bool disposedValue;
+        private bool _disposedValue;
         private readonly string _browserType;
+        private const string LoginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";
 
         public WebDriverService()
         {
-            _browserType = "chrome"; // 설정에서 가져오도록 수정 가능
+            _browserType = "chrome"; // 추후 설정값으로 대체 가능
             AppDomain.CurrentDomain.ProcessExit += (sender, e) => CleanUp();
             Console.CancelKeyPress += (sender, e) =>
             {
@@ -33,17 +34,13 @@ namespace InvenAdClicker.Processing
         private ChromeOptions GetChromeOptions()
         {
             var options = new ChromeOptions();
-
-            // 기본 설정
             options.AddArguments(
-                //"--headless=old",
                 "--headless",
                 "--incognito",
                 "--disable-extensions",
                 "--disable-gpu",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-software-rasterizer",
                 "--disable-browser-side-navigation",
                 "--disable-infobars",
                 "--disable-notifications",
@@ -54,10 +51,6 @@ namespace InvenAdClicker.Processing
                 "--disable-blink-features=AutomationControlled"
             );
 
-            // 페이지 로드 전략 설정
-            //options.PageLoadStrategy = PageLoadStrategy.Eager;
-
-            // 사용자 프로필 설정
             var prefs = new Dictionary<string, object>
             {
                 ["profile.default_content_settings.images"] = 2,
@@ -74,7 +67,6 @@ namespace InvenAdClicker.Processing
             };
 
             options.AddUserProfilePreference("profile.default_content_settings", prefs);
-
             return options;
         }
 
@@ -91,18 +83,15 @@ namespace InvenAdClicker.Processing
             _chromeService = ChromeDriverService.CreateDefaultService();
             _chromeService.SuppressInitialDiagnosticInformation = true;
             _chromeService.HideCommandPromptWindow = true;
-
             return _chromeService;
         }
 
         private FirefoxDriverService GetFirefoxDriverService()
         {
             string geckodriverPath = "C:/geckodriver/geckodriver.exe";
-
             _firefoxService = FirefoxDriverService.CreateDefaultService(geckodriverPath);
             _firefoxService.SuppressInitialDiagnosticInformation = true;
             _firefoxService.HideCommandPromptWindow = true;
-
             return _firefoxService;
         }
 
@@ -120,7 +109,7 @@ namespace InvenAdClicker.Processing
             }
             catch (NoSuchElementException)
             {
-                // 오류 메시지 요소를 찾지 못한 경우
+                // 오류 메시지 미발견 시 정상 로그인으로 간주
                 return false;
             }
             return false;
@@ -142,15 +131,16 @@ namespace InvenAdClicker.Processing
                         throw new ArgumentException($"Unsupported browser type: {_browserType}");
                 }
 
-                // 타임아웃 설정 추가
+                // 공통 타임아웃 설정
                 _driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(10);
                 _driver.Manage().Timeouts().AsynchronousJavaScript = TimeSpan.FromSeconds(10);
 
                 WebDriverWait wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(10));
-                _driver.Navigate().GoToUrl("https://member.inven.co.kr/user/scorpio/mlogin");
-                using (Encryption _en = new Encryption())
+                _driver.Navigate().GoToUrl(LoginUrl);
+
+                using (Encryption en = new Encryption())
                 {
-                    _en.LoadAndValidateCredentials(out string id, out string pw);
+                    en.LoadAndValidateCredentials(out string id, out string pw);
                     wait.Until(ExpectedConditions.ElementToBeClickable(By.Name("user_id"))).SendKeys(id);
                     wait.Until(ExpectedConditions.ElementToBeClickable(By.Name("password"))).SendKeys(pw);
                 }
@@ -160,8 +150,7 @@ namespace InvenAdClicker.Processing
                 {
                     Logger.Error("Login failed.");
                     driver = null;
-                    _driver.Quit();
-                    _driver.Dispose();
+                    CleanUpDriver();
                     return false;
                 }
                 else
@@ -174,24 +163,34 @@ namespace InvenAdClicker.Processing
             {
                 Logger.Info("Login canceled.");
                 driver = null;
-                _driver?.Quit();
-                _driver?.Dispose();
+                CleanUpDriver();
                 return false;
             }
             catch (Exception ex)
             {
                 Logger.Error($"Exception during login: {ex.Message}");
                 driver = null;
+                CleanUpDriver();
+                return false;
+            }
+        }
+
+        private void CleanUpDriver()
+        {
+            try
+            {
                 _driver?.Quit();
                 _driver?.Dispose();
-                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error cleaning up driver: {ex.Message}");
             }
         }
 
         public void CleanUp()
         {
-            _driver?.Quit();
-            _driver?.Dispose();
+            CleanUpDriver();
 
             switch (_browserType.ToLower())
             {
@@ -206,13 +205,13 @@ namespace InvenAdClicker.Processing
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (!_disposedValue)
             {
                 if (disposing)
                 {
                     CleanUp();
                 }
-                disposedValue = true;
+                _disposedValue = true;
             }
         }
 

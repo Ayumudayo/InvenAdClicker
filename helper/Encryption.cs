@@ -6,24 +6,19 @@ using InvenAdClicker.helper;
 
 namespace InvenAdClicker.Helper
 {
-    /// <summary>
-    /// Provides methods to encrypt and decrypt data using the system's security features.
-    /// </summary>
     public class Encryption : IDisposable
     {
         private bool _disposedValue;
-
         private const string CredentialsFilePath = "cred.dat";
 
         private static byte[] EncryptData(string data)
         {
             try
             {
-                byte[] encryptedData = ProtectedData.Protect(
+                return ProtectedData.Protect(
                     Encoding.Unicode.GetBytes(data),
                     null,
                     DataProtectionScope.LocalMachine);
-                return encryptedData;
             }
             catch (Exception ex)
             {
@@ -53,13 +48,8 @@ namespace InvenAdClicker.Helper
         {
             try
             {
-                string data = id + ":" + password;
+                string data = $"{id}:{password}";
                 byte[] encryptedData = EncryptData(data);
-                if (encryptedData == null)
-                {
-                    Logger.Error($"SaveCredentials error: Encrypting Failed");
-                }
-
                 File.WriteAllBytes(CredentialsFilePath, encryptedData);
             }
             catch (Exception ex)
@@ -76,7 +66,6 @@ namespace InvenAdClicker.Helper
             {
                 if (!File.Exists(CredentialsFilePath))
                 {
-                    id = password = "nofile";
                     return false;
                 }
 
@@ -89,7 +78,6 @@ namespace InvenAdClicker.Helper
                     password = parts[1];
                     return true;
                 }
-
                 return false;
             }
             catch (Exception ex)
@@ -103,25 +91,22 @@ namespace InvenAdClicker.Helper
         {
             try
             {
-                string id, pw = "";
-
                 Console.WriteLine("Enter ID and Password");
                 Console.Write("ID : ");
-                id = Console.ReadLine();
+                string id = Console.ReadLine();
 
                 Console.Write("PW : ");
+                string pw = "";
                 while (true)
                 {
                     ConsoleKeyInfo key = Console.ReadKey(true);
                     if (key.Key == ConsoleKey.Enter)
-                    {
                         break;
-                    }
                     else if (key.Key == ConsoleKey.Backspace)
                     {
                         if (pw.Length > 0)
                         {
-                            pw = pw.Substring(0, pw.Length - 1);
+                            pw = pw[..^1];
                             Console.Write("\b \b");
                         }
                     }
@@ -131,7 +116,6 @@ namespace InvenAdClicker.Helper
                         Console.Write("*");
                     }
                 }
-
                 Console.WriteLine();
                 SaveCredentials(id, pw);
                 return true;
@@ -145,13 +129,14 @@ namespace InvenAdClicker.Helper
 
         public void LoadAndValidateCredentials(out string id, out string pw)
         {
-            bool loadCredRes = TryLoadCredentials(out id, out pw);
-
-            if (!loadCredRes)
+            if (!TryLoadCredentials(out id, out pw))
             {
                 Logger.Error("Error loading or validating credentials.");
                 EnterCredentials();
-                TryLoadCredentials(out id, out pw);
+                if (!TryLoadCredentials(out id, out pw))
+                {
+                    throw new Exception("Failed to load credentials after entering.");
+                }
             }
         }
 
@@ -159,11 +144,7 @@ namespace InvenAdClicker.Helper
         {
             if (!_disposedValue)
             {
-                if (disposing)
-                {
-                    // Dispose managed resources if any
-                }
-
+                // 관리 리소스 해제 코드 (필요 시)
                 _disposedValue = true;
             }
         }
