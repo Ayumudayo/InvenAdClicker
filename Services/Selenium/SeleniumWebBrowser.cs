@@ -58,68 +58,57 @@ namespace InvenAdClicker.Services.Selenium
                 options.AddUserProfilePreference(
                     "profile.managed_default_content_settings.fonts", 2);
 
-            //  ChromeDriver 인스턴스 생성
             _driver = new ChromeDriver(service, options);
 
+            encryption.LoadAndValidateCredentials(out var id, out var pw);
+            _driver.Navigate().GoToUrl(_loginUrl);
+
+            var wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(settings.IframeTimeoutSeconds));
+
+            wait.Until(ExpectedConditions.ElementExists(By.Id("user_id")));
+            wait.Until(ExpectedConditions.ElementExists(By.Id("password")));
+            wait.Until(ExpectedConditions.ElementToBeClickable(By.Id("loginBtn")));
+
+            _driver.FindElement(By.Id("user_id")).SendKeys(id);
+            _driver.FindElement(By.Id("password")).SendKeys(pw);
+            _driver.FindElement(By.Id("loginBtn")).Click();
+
+            // 로그인 성공 또는 실패 판정
             try
             {
-                _driver.Navigate().GoToUrl(_loginUrl);
-
-                var wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(settings.IframeTimeoutSeconds));
-                wait.Until(ExpectedConditions.ElementExists(By.Id("user_id")));
-                wait.Until(ExpectedConditions.ElementExists(By.Id("password")));
-                wait.Until(ExpectedConditions.ElementExists(By.Id("loginBtn")));
-
-                encryption.LoadAndValidateCredentials(out var id, out var pw);
-                var idInput = _driver.FindElement(By.Id("user_id"));
-                var pwInput = _driver.FindElement(By.Id("password"));
-                idInput.Clear();
-                idInput.SendKeys(id);
-                pwInput.Clear();
-                pwInput.SendKeys(pw);
-
-                _driver.FindElement(By.Id("loginBtn")).Click();
-
-                // 성공/실패 판정
-                bool done = wait.Until(driver =>
+                wait.Until(drv =>
                 {
-                    // A) URL 변경 → 로그인 성공
-                    if (!driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
+                    // (A) 로그인 페이지에서 벗어나면 성공
+                    if (!drv.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
                         return true;
 
-                    // B) 실패 알림 확인: div#notice 안 텍스트
-                    var notice = driver.FindElement(By.Id("notice"));
-                    if (!string.IsNullOrEmpty(notice.Text)
-                        && notice.Text.Contains("로그인 정보가 일치하지 않습니다."))
-                    {
-                        return true;
-                    }
+                    // (B) 실패 알림 텍스트 확인
+                    var notice = drv.FindElement(By.Id("notice"));
+                    if (notice.Text.Contains("로그인 정보가 일치하지 않습니다."))
+                        Console.WriteLine("계정 정보 검증 실패");
 
                     return false;
                 });
-
-                // 결과 처리
-                if (!_driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.Info("로그인 성공: 페이지 리다이렉트로 확인됨.");
-                }
-                else
-                {
-                    var notice = _driver.FindElement(By.Id("notice"));
-                    var msg = !string.IsNullOrEmpty(notice.Text)
-                              ? notice.Text.Trim()
-                              : "알 수 없는 로그인 오류";
-                    _logger.Error($"로그인 실패: {msg}");
-                    throw new InvalidOperationException($"Login failed: {msg}");
-                }
             }
             catch (WebDriverTimeoutException ex)
             {
+                Console.WriteLine("계정 정보 검증 타임아웃");
                 _logger.Error("로그인 결과 확인 타임아웃", ex);
                 throw;
             }
-            finally
+
+            // 4) 성공 vs 실패 후처리
+            if (!_driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
             {
+                Console.WriteLine("계정 정보 검증 성공");
+                _logger.Info("로그인 성공: 페이지 리다이렉트로 확인됨.");
+            }
+            else
+            {
+                var noticeText = _driver.FindElement(By.Id("notice")).Text.Trim();
+                _logger.Error($"로그인 실패: {noticeText}");
+                _driver.Quit();
+                throw new InvalidOperationException($"Login failed: {noticeText}");
             }
         }
 

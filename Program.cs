@@ -57,10 +57,10 @@ namespace InvenAdClicker
 
             // ProgressTracker 초기화 및 화면 출력
             progress.Initialize(settings.TargetUrls);
-            Task.Run(() => progress.PrintProgress(), CancellationToken.None);
 
             try
             {
+                Console.WriteLine("계정 유효성 검증 중...");
                 // 로그인 정보 유효성 검증
                 encryption.LoadAndValidateCredentials(out var id, out var pw);
 
@@ -69,7 +69,9 @@ namespace InvenAdClicker
                 {
                     // 생성자 내에서 로그인 판정
                 }
-                logger.Info("로그인 확인: 성공");
+
+                Thread.Sleep(1000);
+                Task.Run(() => progress.PrintProgress(), CancellationToken.None);
 
                 // 수집 및 클릭 수행
                 var pageToLinks = await collector.CollectAsync(settings.TargetUrls, token);

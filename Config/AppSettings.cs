@@ -9,6 +9,6 @@
         public bool DisableImages { get; set; } = true;
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;
-        public string[] TargetUrls { get; set; }
+        public string[]? TargetUrls { get; set; }
     }
 }
