@@ -1,81 +1,99 @@
-﻿using InvenAdClicker.Helper;
-using InvenAdClicker.Processing;
-using OpenQA.Selenium;
-using System;
-using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
-using InvenAdClicker.helper;
+﻿using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using InvenAdClicker.Config;
+using InvenAdClicker.Services.Interfaces;
+using InvenAdClicker.Services.Selenium;
+using InvenAdClicker.Utils;
+using CustomLogger = InvenAdClicker.Utils.ILogger;
+using Log4Net = InvenAdClicker.Utils.Log4NetLogger;
 
 namespace InvenAdClicker
 {
     class Program
     {
-        public static async Task Main()
+        public static async Task Main(string[] args)
         {
-            using CancellationTokenSource cts = new CancellationTokenSource();
-            var cancellationToken = cts.Token;
+            var stopwatch = Stopwatch.StartNew();
 
-            Console.CancelKeyPress += (sender, e) =>
+            // Ctrl+C 시그널 처리
+            using var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) =>
             {
                 e.Cancel = true;
                 cts.Cancel();
             };
+            var token = cts.Token;
 
-            Stopwatch programStopwatch = Stopwatch.StartNew();
-
-            Logger.Info("BEGIN==========================================");
-            Logger.Info("Check credential...");
-            Console.WriteLine("Check credential...");
-
-            // 로그인 검증 로직 분리
-            bool loginSuccess = await EnsureLoginAsync(cancellationToken);
-            if (!loginSuccess)
-            {
-                Logger.Error("Login process aborted.");
-                return;
-            }
-
-            // 잠시 대기 후 실제 프로세스 시작
-            await Task.Delay(3000, cancellationToken);
-
-            Logger.Info("Initializing...");
-            var processor = new UrlProcessor();
-            await processor.StartProcessingAsync(cancellationToken);
-
-            Logger.Info("END============================================");
-            programStopwatch.Stop();
-            double totalSec = programStopwatch.Elapsed.TotalSeconds;
-            Logger.Info($"Total Execution Time: {Math.Round(totalSec / 60)}Minute {Math.Round(totalSec % 60)}seconds.");
-            Console.WriteLine($"Total Execution Time: {Math.Round(totalSec / 60)}Minute {Math.Round(totalSec % 60)}seconds.");
-        }
-
-        private static async Task<bool> EnsureLoginAsync(CancellationToken cancellationToken)
-        {
-            using Encryption en = new Encryption();
-            en.LoadAndValidateCredentials(out string id, out string pw);
-
-            while (true)
-            {
-                using (WebDriverService wd = new WebDriverService())
+            // Host 빌드
+            using IHost host = Host.CreateDefaultBuilder(args)
+                .ConfigureLogging(logging =>
                 {
-                    if (!wd.SetupAndLogin(out IWebDriver driver, cancellationToken))
-                    {
-                        Logger.Info("Failed to login.");
-                        Console.WriteLine("Failed to login. Enter new credentials.");
-                        en.EnterCredentials();
-                        en.LoadAndValidateCredentials(out id, out pw);
-                    }
-                    else
-                    {
-                        Logger.Info("Login passed.");
-                        Console.WriteLine("Login passed.");
-                        // 로그인 성공 후 브라우저는 바로 종료
-                        driver.Quit();
-                        return true;
-                    }
+                    logging.ClearProviders();
+                })
+                .ConfigureServices((_, services) =>
+                {
+                    services.AddSingleton<CustomLogger, Log4Net>();
+                    services.AddSingleton<SettingsManager>();
+                    services.AddSingleton(provider =>
+                        provider.GetRequiredService<SettingsManager>().Settings);
+
+                    services.AddSingleton<Encryption>();
+                    services.AddSingleton(provider => ProgressTracker.Instance);
+
+                    services.AddSingleton<IAdCollector, SeleniumAdCollector>();
+                    services.AddSingleton<IAdClicker, SeleniumAdClicker>();
+                })
+                .Build();
+
+            // 주요 인스턴스 획득
+            var logger = host.Services.GetRequiredService<CustomLogger>();
+            var settings = host.Services.GetRequiredService<AppSettings>();
+            var encryption = host.Services.GetRequiredService<Encryption>();
+            var progress = host.Services.GetRequiredService<ProgressTracker>();
+            var collector = host.Services.GetRequiredService<IAdCollector>();
+            var clicker = host.Services.GetRequiredService<IAdClicker>();
+
+            // ProgressTracker 초기화 및 화면 출력
+            progress.Initialize(settings.TargetUrls);
+            Task.Run(() => progress.PrintProgress(), CancellationToken.None);
+
+            try
+            {
+                // 로그인 정보 유효성 검증
+                encryption.LoadAndValidateCredentials(out var id, out var pw);
+
+                // 로그인 시도: 실제 브라우저로 로그인 확인
+                using (var browser = new SeleniumWebBrowser(settings, logger, encryption))
+                {
+                    // 생성자 내에서 로그인 판정
                 }
-                await Task.Delay(500, cancellationToken);
+                logger.Info("로그인 확인: 성공");
+
+                // 수집 및 클릭 수행
+                var pageToLinks = await collector.CollectAsync(settings.TargetUrls, token);
+                await clicker.ClickAsync(pageToLinks, token);
+                logger.Info("Completed all ad clicks.");
+            }
+            catch (OperationCanceledException)
+            {
+                logger.Warn("Operation was canceled by user.");
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Fatal error occurred", ex);
+            }
+            finally
+            {
+                // Host 중지
+                await host.StopAsync();
+
+                // 마무리
+                stopwatch.Stop();
+                int minutes = (int)stopwatch.Elapsed.TotalMinutes;
+                int seconds = stopwatch.Elapsed.Seconds;
+                Console.WriteLine($"Total Execution Time: {minutes}Min {seconds}Sec");
             }
         }
     }
