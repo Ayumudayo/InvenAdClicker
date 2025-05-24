@@ -17,7 +17,7 @@ namespace InvenAdClicker.Services.Selenium
         {
             _logger = logger;
 
-            // ChromeDriverService 설정 ─────────────────────────
+            // ChromeDriverService 설정
             var service = ChromeDriverService.CreateDefaultService();
             service.SuppressInitialDiagnosticInformation = true;  // 초기 진단 메시지 억제
             service.HideCommandPromptWindow = true;  // 드라이버 창 숨김
@@ -84,15 +84,11 @@ namespace InvenAdClicker.Services.Selenium
 
                     // (B) 실패 알림 텍스트 확인
                     var notice = drv.FindElement(By.Id("notice"));
-                    if (notice.Text.Contains("로그인 정보가 일치하지 않습니다."))
-                        Console.WriteLine("계정 정보 검증 실패");
-
-                    return false;
+                    return notice.Text.Contains("로그인 정보가 일치하지 않습니다.");
                 });
             }
             catch (WebDriverTimeoutException ex)
             {
-                Console.WriteLine("계정 정보 검증 타임아웃");
                 _logger.Error("로그인 결과 확인 타임아웃", ex);
                 throw;
             }
@@ -100,7 +96,6 @@ namespace InvenAdClicker.Services.Selenium
             // 4) 성공 vs 실패 후처리
             if (!_driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine("계정 정보 검증 성공");
                 _logger.Info("로그인 성공: 페이지 리다이렉트로 확인됨.");
             }
             else

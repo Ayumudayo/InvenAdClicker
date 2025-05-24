@@ -69,6 +69,7 @@ namespace InvenAdClicker
                 {
                     // 생성자 내에서 로그인 판정
                 }
+                Console.WriteLine("계정 유효성 검증 성공");
 
                 Thread.Sleep(1000);
                 Task.Run(() => progress.PrintProgress(), CancellationToken.None);
