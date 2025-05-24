@@ -8,7 +8,7 @@ namespace InvenAdClicker.Utils
         private const string CredentialFile = "credentials.dat";
         private bool _disposed;
 
-        // 저장된 자격증명을 로드합니다
+        // 저장된 자격증명을 로드
         // 저장된 파일이 없거나 복호화에 실패하면 Console 입력을 통해 새로 받고 저장
         public void LoadAndValidateCredentials(out string id, out string pw)
         {
@@ -23,7 +23,7 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        // Console에서 ID/PW를 입력받아 암호화하여 저장합니다.
+        // Console에서 ID/PW를 입력받아 암호화하여 저장
         public bool EnterCredentials()
         {
             try
@@ -45,7 +45,7 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        // 읽어 복호화 후 ID/PW를 분리 반환합니다.
+        // 읽어 복호화 후 ID/PW를 분리 반환
         // 파일이 없거나 포맷이 잘못됐거나 복호화 실패 시 false 반환
         private bool TryLoadCredentials(out string id, out string pw)
         {

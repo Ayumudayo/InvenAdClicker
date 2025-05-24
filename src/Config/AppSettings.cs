@@ -2,10 +2,10 @@
 {
     public class AppSettings
     {
-        public int MaxDegreeOfParallelism { get; set; } = 4;
+        public int MaxDegreeOfParallelism { get; set; } = 3;
         public int IframeTimeoutSeconds { get; set; } = 5;
         public int RetryCount { get; set; } = 1;
-        public int ClickDelayMilliseconds { get; set; } = 500;
+        public int ClickDelayMilliseconds { get; set; } = 300;
         public bool DisableImages { get; set; } = true;
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;
