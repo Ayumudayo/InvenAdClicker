@@ -11,7 +11,7 @@ using Log4Net = InvenAdClicker.Utils.Log4NetLogger;
 
 namespace InvenAdClicker
 {
-    class Program
+    class InvenAdClicker
     {
         public static async Task Main(string[] args)
         {
