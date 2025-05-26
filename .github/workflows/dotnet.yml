@@ -9,8 +9,31 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      code_changed: ${{ steps.set_outputs.outputs.code_changed }}
+      docs_changed: ${{ steps.set_outputs.outputs.docs_changed }}
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Filter code changes
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            code:
+              - '**/*.cs'
+              - '**/*.sln'
+              - '**/*.csproj'
+            docs:
+              - 'README.md'
+              - 'LICENSE'
+
+      - name: Set job outputs
+        id: set_outputs
+        run: |
+          echo "code_changed=${{ steps.filter.outputs.code }}" >> $GITHUB_OUTPUT
+          echo "docs_changed=${{ steps.filter.outputs.docs }}" >> $GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -26,29 +49,14 @@ jobs:
       - name: Test
         run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
 
-      # 코드(.cs, .sln 등) 변경이 있는지 감지
-      - name: Filter code changes
-        id: changes
-        uses: dorny/paths-filter@v2
-        with:
-          filters:
-            code:
-              - '**/*.cs'
-              - '**/*.sln'
-              - '**/*.csproj'
-            docs:
-              - 'README.md'
-              - 'LICENSE'
-              #- '.github/**'
-
   release:
     needs: build
     runs-on: windows-latest
-    # main 브랜치 푸시이면서, 코드 및 리드미 라이센스 등 변경이 있을 때만 실행
-    if: |
+    if: >
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      steps.build.outputs.code == 'true' || steps.build.outputs.docs == 'true'
+      (needs.build.outputs.code_changed == 'true' || needs.build.outputs.docs_changed == 'true')
+
     steps:
       - uses: actions/checkout@v4
 
