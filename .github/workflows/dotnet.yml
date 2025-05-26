@@ -2,15 +2,45 @@ name: .NET
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
 
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      code_changed: ${{ steps.set_outputs.outputs.code_changed }}
+      docs_changed: ${{ steps.set_outputs.outputs.docs_changed }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0         # 모든 커밋을 fetch
+
+      - name: Filter code & docs changes
+        if: github.event_name == 'push'
+        id: filter
+        uses: dorny/paths-filter@v2
+        continue-on-error: true
+        with:
+          filters: |
+            code:
+              - '**/*.cs'
+              - '**/*.sln'
+              - '**/*.csproj'
+            docs:
+              - 'README.md'
+              - 'LICENSE'
+          token: ''               # 빈 문자열로 설정하면 git diff fallback
+          list-files: 'none'      # 파일 목록 생략, true/false 출력
+          initial-fetch-depth: 0  # 로컬 git diff로 충분히 감지
+
+      - name: Set job outputs
+        if: github.event_name == 'push'
+        id: set_outputs
+        run: |
+          echo "code_changed=${{ steps.filter.outputs.code || 'false' }}" >> $GITHUB_OUTPUT
+          echo "docs_changed=${{ steps.filter.outputs.docs || 'false' }}" >> $GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -26,29 +56,14 @@ jobs:
       - name: Test
         run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
 
-      # 코드(.cs, .sln 등) 변경이 있는지 감지
-      - name: Filter code changes
-        id: changes
-        uses: dorny/paths-filter@v2
-        with:
-          filters:
-            code:
-              - '**/*.cs'
-              - '**/*.sln'
-              - '**/*.csproj'
-            docs:
-              - 'README.md'
-              - 'LICENSE'
-              #- '.github/**'
-
   release:
     needs: build
     runs-on: windows-latest
-    # main 브랜치 푸시이면서, 코드 및 리드미 라이센스 등 변경이 있을 때만 실행
-    if: |
+    if: >
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      steps.build.outputs.code == 'true' || steps.build.outputs.docs == 'true'
+      (needs.build.outputs.code_changed == 'true' || needs.build.outputs.docs_changed == 'true')
+
     steps:
       - uses: actions/checkout@v4
 
