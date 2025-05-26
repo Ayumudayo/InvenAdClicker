@@ -97,6 +97,10 @@ namespace InvenAdClicker
                 int minutes = (int)stopwatch.Elapsed.TotalMinutes;
                 int seconds = stopwatch.Elapsed.Seconds;
                 Console.WriteLine($"Total Execution Time: {minutes}Min {seconds}Sec");
+
+                Console.WriteLine("작업이 완료되었습니다. 아무 키나 누르면 프로그램이 종료됩니다.");
+                Console.ReadKey();
+
             }
         }
     }
