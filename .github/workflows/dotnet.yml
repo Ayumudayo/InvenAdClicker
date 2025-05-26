@@ -2,54 +2,86 @@ name: .NET
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
-    - uses: actions/checkout@v4
-      
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-        
-    - name: Restore dependencies
-      run: dotnet restore InvenAdClicker.sln
-      
-    - name: Build
-      run: dotnet build InvenAdClicker.sln --no-restore
-      
-    - name: Test
-      run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
-      
-    # 메인 브랜치에 푸시될 때만 실행되는 스텝들
-    - name: Publish
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
-      
-    - name: Zip Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: thedoctor0/zip-release@0.7.6
-      with:
-        filename: InvenAdClicker.zip
-        directory: ./publish
-        
-    - name: Bump version and push tag
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      id: tag_version
-      uses: mathieudutour/github-tag-action@v6.2
-      with:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        DEFAULT_BUMP: patch
-        
-    - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: ncipollo/release-action@v1
-      with:
-        artifacts: "./publish/InvenAdClicker.zip"
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag: ${{ steps.tag_version.outputs.new_tag }}
-        release_name: Release ${{ steps.tag_version.outputs.new_tag }}
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore InvenAdClicker.sln
+
+      - name: Build
+        run: dotnet build InvenAdClicker.sln --no-restore
+
+      - name: Test
+        run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
+
+      # 코드(.cs, .sln 등) 변경이 있는지 감지
+      - name: Filter code changes
+        id: changes
+        uses: dorny/paths-filter@v2
+        with:
+          filters:
+            code:
+              - '**/*.cs'
+              - '**/*.sln'
+              - '**/*.csproj'
+            docs:
+              - 'README.md'
+              - 'LICENSE'
+              #- '.github/**'
+
+  release:
+    needs: build
+    runs-on: windows-latest
+    # main 브랜치 푸시이면서, 코드 및 리드미 라이센스 등 변경이 있을 때만 실행
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      steps.build.outputs.code == 'true' || steps.build.outputs.docs == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish
+        run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
+
+      - name: Copy README and LICENSE into publish folder
+        run: |
+          copy README.md .\publish\README.md
+          copy LICENSE .\publish\LICENSE
+
+      - name: Zip Release
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          filename: InvenAdClicker.zip
+          directory: ./publish
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BUMP: patch
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "./publish/InvenAdClicker.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          release_name: Release ${{ steps.tag_version.outputs.new_tag }}
