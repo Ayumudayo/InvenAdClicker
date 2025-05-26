@@ -2,8 +2,7 @@ name: .NET
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
 
 jobs:
@@ -15,10 +14,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0         # 모든 커밋을 fetch
 
-      - name: Filter code changes
+      - name: Filter code & docs changes
+        if: github.event_name == 'push'
         id: filter
         uses: dorny/paths-filter@v2
+        continue-on-error: true
         with:
           filters: |
             code:
@@ -28,12 +31,16 @@ jobs:
             docs:
               - 'README.md'
               - 'LICENSE'
+          token: ''               # 빈 문자열로 설정하면 git diff fallback
+          list-files: 'none'      # 파일 목록 생략, true/false 출력
+          initial-fetch-depth: 0  # 로컬 git diff로 충분히 감지
 
       - name: Set job outputs
+        if: github.event_name == 'push'
         id: set_outputs
         run: |
-          echo "code_changed=${{ steps.filter.outputs.code }}" >> $GITHUB_OUTPUT
-          echo "docs_changed=${{ steps.filter.outputs.docs }}" >> $GITHUB_OUTPUT
+          echo "code_changed=${{ steps.filter.outputs.code || 'false' }}" >> $GITHUB_OUTPUT
+          echo "docs_changed=${{ steps.filter.outputs.docs || 'false' }}" >> $GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
