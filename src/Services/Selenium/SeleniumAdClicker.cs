@@ -1,113 +1,110 @@
 using InvenAdClicker.Config;
 using InvenAdClicker.Services.Interfaces;
+using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
-using System.Collections.Concurrent;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Support.UI;
+using System.Threading.Channels;
 
-namespace InvenAdClicker.Services.Selenium
+public class SeleniumAdClicker : IAdClicker
 {
-    public class SeleniumAdClicker : IAdClicker
+    private readonly AppSettings _settings;
+    private readonly ILogger _logger;
+    private readonly BrowserPool _browserPool;
+    private readonly ProgressTracker _progress;
+
+    public SeleniumAdClicker(AppSettings settings, ILogger logger,
+        BrowserPool browserPool, ProgressTracker progress)
     {
-        private readonly AppSettings _settings;
-        private readonly ILogger _logger;
-        private readonly Encryption _encryption;
+        _settings = settings;
+        _logger = logger;
+        _browserPool = browserPool;
+        _progress = progress;
+    }
 
-        public SeleniumAdClicker(
-            AppSettings settings,
-            ILogger logger,
-            Encryption encryption)
-        {
-            _settings = settings;
-            _logger = logger;
-            _encryption = encryption;
-        }
+    public async Task ClickAsync(
+        Dictionary<string, IEnumerable<string>> pageToLinks,
+        CancellationToken cancellationToken = default)
+    {
+        var channel = Channel.CreateUnbounded<(string page, string link)>(new UnboundedChannelOptions { SingleWriter = true, SingleReader = false });
 
-        public async Task ClickAsync(
-            Dictionary<string, IEnumerable<string>> pageToLinks,
-            CancellationToken cancellationToken = default)
+        // 링크 공급
+        _ = Task.Run(async () =>
         {
-            // 브라우저 풀 생성
-            var browserPool = new ConcurrentQueue<SeleniumWebBrowser>();
-            for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
+            foreach (var (page, links) in pageToLinks)
             {
-                browserPool.Enqueue(new SeleniumWebBrowser(_settings, _logger, _encryption));
+                _progress.Update(page, pendingClicksDelta: links.Count());
+                foreach (var link in links)
+                    await channel.Writer.WriteAsync((page, link), cancellationToken);
             }
+            channel.Writer.Complete();
+        }, cancellationToken);
 
-            try
+        // 워커 생성
+        var workers = new Task[_settings.MaxDegreeOfParallelism];
+        for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
+        {
+            int workerId = i;
+            workers[i] = Task.Run(async () =>
             {
-                // 페이지별 병렬 처리
-                var po = new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = _settings.MaxDegreeOfParallelism,
-                    CancellationToken = cancellationToken
-                };
+                var browser = await _browserPool.AcquireAsync(cancellationToken);
+                _logger.Info($"ClickerWorker {workerId} started");
 
-                await Task.Run(() =>
+                try
                 {
-                    Parallel.ForEach(pageToLinks, po, kv =>
+                    await foreach (var (page, link) in channel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        po.CancellationToken.ThrowIfCancellationRequested();
-
-                        string pageUrl = kv.Key;
-                        var links = kv.Value.ToArray();
-
-                        // 클릭 단계 진입: Pending 초기화 + 스레드 카운트
-                        ProgressTracker.Instance.Update(
-                            pageUrl,
-                            status: ProgressStatus.Clicking,
-                            pendingClicksDelta: links.Length,
-                            threadDelta: +1);
-
-                        // 풀에서 브라우저 꺼내기
-                        if (!browserPool.TryDequeue(out var browser))
-                            throw new InvalidOperationException("No available browser in pool");
-
+                        _progress.Update(page, ProgressStatus.Clicking, threadDelta: +1);
                         try
                         {
-                            foreach (var link in links)
-                            {
-                                try
-                                {
-                                    po.CancellationToken.ThrowIfCancellationRequested();
-
-                                    browser.Driver.Navigate().GoToUrl(link);
-                                    _logger.Info($"Clicked ad: {link}");
-
-                                    ProgressTracker.Instance.Update(
-                                        pageUrl,
-                                        clickDelta: 1,
-                                        pendingClicksDelta: -1);
-
-                                    // 고정 Delay
-                                    Thread.Sleep(_settings.ClickDelayMilliseconds);
-                                }
-                                catch (Exception exLink)
-                                {
-                                    _logger.Warn($"[{pageUrl}] 클릭 오류: {exLink.Message}");
-                                    ProgressTracker.Instance.Update(
-                                        pageUrl,
-                                        errDelta: 1);
-                                }
-                            }
+                            await ClickWithBrowserAsync(browser, page, link, cancellationToken);
+                            _progress.Update(page, clickDelta: 1, pendingClicksDelta: -1);
+                            _logger.Info($"[Clicker{workerId}] Clicked {link}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"[Clicker{workerId}] Failed click {link}", ex);
+                            _progress.Update(page, ProgressStatus.Error, errDelta: 1, pendingClicksDelta: -1);
                         }
                         finally
                         {
-                            // 스레드 감소 + 브라우저 반납
-                            ProgressTracker.Instance.Update(
-                                pageUrl,
-                                threadDelta: -1);
-                            browserPool.Enqueue(browser);
+                            _progress.Update(page, threadDelta: -1);
                         }
-                    });
-                }, cancellationToken);
-            }
-            finally
-            {
-                // 풀에 남은 브라우저 모두 종료
-                while (browserPool.TryDequeue(out var browser))
-                {
-                    browser.Dispose();
+                    }
                 }
-            }
+                finally
+                {
+                    _browserPool.Release(browser);
+                    _logger.Info($"ClickerWorker {workerId} stopped");
+                }
+            }, cancellationToken);
         }
+
+        await Task.WhenAll(workers);
+        _logger.Info("All ad clicking done");
     }
+
+    private async Task ClickWithBrowserAsync(
+        SeleniumWebBrowser browser,
+        string page, string link,
+        CancellationToken cancellationToken)
+    {
+        await RetryHelper.ExecuteWithRetryAsync(async () =>
+        {
+            var driver = browser.Driver;
+            driver.Navigate().GoToUrl(link);
+            WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+
+            var clickable = driver.FindElements(By.TagName("a"))
+                .FirstOrDefault(e => e.Displayed && e.Enabled);
+            clickable?.Click();
+            await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
+            return Task.CompletedTask;
+        }, _settings.RetryCount, _logger);
+    }
+
+    private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
+        => new WebDriverWait(driver, timeout)
+            .Until(d => ((IJavaScriptExecutor)d)
+                .ExecuteScript("return document.readyState").Equals("complete"));
 }

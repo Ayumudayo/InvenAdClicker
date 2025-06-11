@@ -20,9 +20,9 @@ namespace InvenAdClicker.Services.Selenium
             // ChromeDriverService 설정
             var service = ChromeDriverService.CreateDefaultService();
             service.SuppressInitialDiagnosticInformation = true;  // 초기 진단 메시지 억제
-            service.HideCommandPromptWindow = true;  // 드라이버 창 숨김
-            service.LogPath = "NUL"; // Windows의 null 디바이스
-            service.EnableVerboseLogging = false; // verbose 로깅도 끔
+            service.HideCommandPromptWindow = true;
+            service.LogPath = "NUL";
+            service.EnableVerboseLogging = false; 
 
             // ChromeOptions 설정
             var options = new ChromeOptions();
@@ -93,7 +93,7 @@ namespace InvenAdClicker.Services.Selenium
                 throw;
             }
 
-            // 4) 성공 vs 실패 후처리
+            // 성공 vs 실패 후처리
             if (!_driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.Info("로그인 성공: 페이지 리다이렉트로 확인됨.");

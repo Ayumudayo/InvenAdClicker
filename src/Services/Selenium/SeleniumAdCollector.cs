@@ -1,130 +1,118 @@
 using InvenAdClicker.Config;
 using InvenAdClicker.Services.Interfaces;
+using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
+using OpenQA.Selenium.Support.UI;
 using System.Collections.Concurrent;
+using System.Security.Policy;
+using System.Threading.Channels;
 
-namespace InvenAdClicker.Services.Selenium
+public class SeleniumAdCollector : IAdCollector
 {
-    public class SeleniumAdCollector : IAdCollector
+    private readonly AppSettings _settings;
+    private readonly ILogger _logger;
+    private readonly BrowserPool _browserPool;
+    private readonly ProgressTracker _progress;
+
+    public SeleniumAdCollector(AppSettings settings, ILogger logger,
+        BrowserPool browserPool, ProgressTracker progress)
     {
-        private readonly AppSettings _settings;
-        private readonly ILogger _logger;
-        private readonly Encryption _encryption;
+        _settings = settings;
+        _logger = logger;
+        _browserPool = browserPool;
+        _progress = progress;
+    }
 
-        public SeleniumAdCollector(
-            AppSettings settings,
-            ILogger logger,
-            Encryption encryption)
-        {
-            _settings = settings;
-            _logger = logger;
-            _encryption = encryption;
-        }
+    public async Task<Dictionary<string, IEnumerable<string>>> CollectAsync(
+        string[] urls, CancellationToken cancellationToken = default)
+    {
+        var result = new ConcurrentDictionary<string, IEnumerable<string>>();
+        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true, SingleReader = false });
 
-        public async Task<Dictionary<string, IEnumerable<string>>> CollectAsync(
-            string[] urls,
-            CancellationToken cancellationToken = default)
+        // URL 공급
+        _ = Task.Run(async () =>
         {
-            // 브라우저 풀 생성 (MaxDegreeOfParallelism 개수만큼)
-            var browserPool = new ConcurrentQueue<SeleniumWebBrowser>();
-            for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
+            foreach (var url in urls)
             {
-                // 생성자에서 로그인까지 완료됨
-                browserPool.Enqueue(new SeleniumWebBrowser(_settings, _logger, _encryption));
+                await channel.Writer.WriteAsync(url, cancellationToken);
+                _progress.Update(url, ProgressStatus.Waiting, iterDelta: 1);
             }
+            channel.Writer.Complete();
+        }, cancellationToken);
 
-            try
+        // 워커 생성
+        var workers = new Task[_settings.MaxDegreeOfParallelism];
+        for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
+        {
+            int workerId = i;
+            workers[i] = Task.Run(async () =>
             {
-                var result = new ConcurrentDictionary<string, IEnumerable<string>>();
-                var po = new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = _settings.MaxDegreeOfParallelism,
-                    CancellationToken = cancellationToken
-                };
+                var browser = await _browserPool.AcquireAsync(cancellationToken);
+                _logger.Info($"CollectorWorker {workerId} started");
 
-                await Task.Run(() =>
+                try
                 {
-                    Parallel.ForEach(urls, po, pageUrl =>
+                    await foreach (var url in channel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        po.CancellationToken.ThrowIfCancellationRequested();
-
-                        // 스레드 카운트 +1
-                        ProgressTracker.Instance.Update(
-                            pageUrl,
-                            threadDelta: +1,
-                            status: ProgressStatus.Collecting);
-
-                        // 풀에서 브라우저 꺼내기
-                        if (!browserPool.TryDequeue(out var browser))
-                            throw new InvalidOperationException("No available browser in pool");
-
+                        _progress.Update(url, ProgressStatus.Collecting, threadDelta: 1);
                         try
                         {
-                            browser.Driver.Navigate().GoToUrl(pageUrl);
+                            var links = await CollectWithBrowserAsync(browser, url, cancellationToken);
+                            result[url] = links;
 
-                            // iframe 순회하여 광고 링크 수집
-                            var frames = browser.Driver
-                                               .FindElements(By.TagName("iframe"))
-                                               .ToList();
-                            _logger.Info($"[{pageUrl}] Found {frames.Count} iframes");
-
-                            var links = new List<string>();
-                            foreach (var frame in frames)
-                            {
-                                try
-                                {
-                                    browser.Driver.SwitchTo().Frame(frame);
-                                    links.AddRange(
-                                        browser.Driver.FindElements(By.TagName("a"))
-                                            .Select(a => a.GetAttribute("href"))
-                                            .Where(h => !string.IsNullOrEmpty(h)));
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.Warn($"[{pageUrl}] iframe 오류: {ex.Message}");
-                                    ProgressTracker.Instance.Update(
-                                        pageUrl,
-                                        errDelta: 1);
-                                }
-                                finally
-                                {
-                                    browser.Driver.SwitchTo().DefaultContent();
-                                }
-                            }
-
-                            var distinct = links.Distinct().ToArray();
-                            result[pageUrl] = distinct;
-
-                            // 수집 통계 반영
-                            ProgressTracker.Instance.Update(
-                                pageUrl,
-                                status: ProgressStatus.Collected,
-                                adsDelta: distinct.Length);
+                            bool collectedCount = links.Count > 0;
+                            _progress.Update(url, collectedCount ? ProgressStatus.Collected : ProgressStatus.NoAds, adsDelta: links.Count(), threadDelta: -1);
+                            _logger.Info($"[Collector{workerId}] {url} => {links.Count} links");
                         }
-                        finally
+                        catch (Exception ex)
                         {
-                            // 스레드 카운트 -1
-                            ProgressTracker.Instance.Update(
-                                pageUrl,
-                                threadDelta: -1);
-
-                            // 브라우저 반납
-                            browserPool.Enqueue(browser);
+                            _logger.Error($"[Collector{workerId}] Failed: {url}", ex);
+                            _progress.Update(url, ProgressStatus.Error, errDelta: 1, threadDelta: -1);
                         }
-                    });
-                }, cancellationToken);
-
-                return result.ToDictionary(kv => kv.Key, kv => kv.Value);
-            }
-            finally
-            {
-                // 풀에 남은 브라우저 전부 종료
-                while (browserPool.TryDequeue(out var browser))
-                {
-                    browser.Dispose();
+                    }
                 }
-            }
+                finally
+                {
+                    _browserPool.Release(browser);
+                    _logger.Info($"CollectorWorker {workerId} stopped");
+                }
+            }, cancellationToken);
         }
+
+        await Task.WhenAll(workers);
+        return result.ToDictionary(kv => kv.Key, kv => kv.Value);
     }
+
+    private async Task<List<string>> CollectWithBrowserAsync(
+        SeleniumWebBrowser browser, string url, CancellationToken cancellationToken)
+    {
+        var driver = browser.Driver;
+        driver.Navigate().GoToUrl(url);
+        WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+
+        var links = new List<string>();
+        foreach (var iframe in driver.FindElements(By.TagName("iframe")))
+        {
+            try
+            {
+                driver.SwitchTo().Frame(iframe);
+                links.AddRange(driver.FindElements(By.TagName("a"))
+                    .Select(e => e.GetAttribute("href"))
+                    .Where(h => !string.IsNullOrEmpty(h)));
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[Collector] iframe fail {url}: {ex.Message}");
+            }
+            finally { driver.SwitchTo().DefaultContent(); }
+        }
+
+        return links;
+    }
+
+    private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
+        => new WebDriverWait(driver, timeout)
+            .Until(d => ((IJavaScriptExecutor)d)
+                .ExecuteScript("return document.readyState").Equals("complete"));
 }

@@ -6,6 +6,7 @@
         public int IframeTimeoutSeconds { get; set; } = 5;
         public int RetryCount { get; set; } = 1;
         public int ClickDelayMilliseconds { get; set; } = 300;
+        public int PageLoadTimeoutMilliseconds { get; set; } = 1000;
         public bool DisableImages { get; set; } = true;
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;
