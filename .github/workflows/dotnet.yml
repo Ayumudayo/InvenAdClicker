@@ -47,10 +47,18 @@ jobs:
         run: dotnet restore InvenAdClicker.sln
 
       - name: Build
-        run: dotnet build InvenAdClicker.sln --no-restore
+        run: dotnet build InvenAdClicker.sln --configuration Release --no-restore
 
       - name: Test
         run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: build-output
+          path: |
+            **/bin/**/*
+            **/obj/**/*
+
 
   release:
     needs: build
@@ -71,8 +79,9 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Restore dependencies
-        run: dotnet restore InvenAdClicker.sln
+      - uses: actions/download-artifact@v3
+        with:
+          name: build-output
 
       - name: Publish
         run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
