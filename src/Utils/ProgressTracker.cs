@@ -92,7 +92,7 @@ namespace InvenAdClicker.Utils
                 "Clicked".PadRight(8) +
                 "Pending".PadRight(9) +
                 "Err".PadRight(6) +
-                "Thr");
+                "Thrd");
             Console.WriteLine(new string('-', urlW + statusW + 8 + 8 + 8 + 9 + 6 + 4));
 
             var urls = _map.Keys.OrderBy(k => k).ToList();
