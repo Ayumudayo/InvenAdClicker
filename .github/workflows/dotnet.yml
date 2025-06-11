@@ -15,10 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0         # 모든 커밋을 fetch
+          fetch-depth: 0 # 모든 커밋을 fetch
 
       - name: Filter code & docs changes
-        if: github.event_name == 'push'
         id: filter
         uses: dorny/paths-filter@v2
         continue-on-error: true
@@ -31,12 +30,10 @@ jobs:
             docs:
               - 'README.md'
               - 'LICENSE'
-          token: ''               # 빈 문자열로 설정하면 git diff fallback
-          list-files: 'none'      # 파일 목록 생략, true/false 출력
-          initial-fetch-depth: 0  # 로컬 git diff로 충분히 감지
+          token: ${{ secrets.GITHUB_TOKEN }} # PR 변경 감지
+          list-files: 'none' # 파일 목록 생략, true/false 출력
 
       - name: Set job outputs
-        if: github.event_name == 'push'
         id: set_outputs
         run: |
           echo "code_changed=${{ steps.filter.outputs.code || 'false' }}" >> $GITHUB_OUTPUT
@@ -70,7 +67,6 @@ jobs:
         github.event.pull_request.merged == true &&
         github.event.pull_request.base.ref == 'main'
       )
-
 
     steps:
       - uses: actions/checkout@v4
