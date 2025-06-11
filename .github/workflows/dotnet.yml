@@ -84,7 +84,7 @@ jobs:
           name: build-output
 
       - name: Publish
-        run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
+        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish
 
       - name: Copy README and LICENSE into publish folder
         run: |
