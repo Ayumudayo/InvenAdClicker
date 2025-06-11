@@ -66,6 +66,8 @@ namespace InvenAdClicker
                 }
 
                 Thread.Sleep(1000);
+
+                Console.CursorVisible = false;
                 Console.Clear();
                 var progressTask = Task.Run(() => progress.PrintProgress(), CancellationToken.None);
 
@@ -99,8 +101,9 @@ namespace InvenAdClicker
                 int minutes = (int)stopwatch.Elapsed.TotalMinutes;
                 int seconds = stopwatch.Elapsed.Seconds;
 
+                Console.CursorVisible = true;
                 Console.WriteLine($"Total Execution Time: {minutes}Min {seconds}Sec");
-                Console.WriteLine("프로그램이 종료됩니다. 아무 키나 누르세요.");
+                Console.WriteLine("작업 완료. 아무 키나 눌러 종료합니다.");
                 Console.ReadKey();
             }
         }
