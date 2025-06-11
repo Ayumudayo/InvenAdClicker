@@ -58,10 +58,6 @@ jobs:
     runs-on: windows-latest
     if: |
       (
-        github.event_name == 'push' &&
-        github.ref == 'refs/heads/main' &&
-        (needs.build.outputs.code_changed == 'true' || needs.build.outputs.docs_changed == 'true')
-      ) || (
         github.event_name == 'pull_request' &&
         github.event.action == 'closed' &&
         github.event.pull_request.merged == true &&
