@@ -5,16 +5,19 @@ namespace InvenAdClicker.Utils
         public static async Task<T> ExecuteWithRetryAsync<T>(
             Func<Task<T>> action,
             int retryCount,
-            ILogger logger)
+            ILogger logger,
+            int baseDelayMs = 1000)
         {
             int attempts = 0;
             while (true)
             {
-                logger.Info($"[RetryHelper] Attempt {attempts + 1} starting.");
                 try
                 {
                     var result = await action();
-                    logger.Info($"[RetryHelper] Attempt {attempts + 1} succeeded.");
+                    if (attempts > 0)
+                    {
+                        logger.Info($"[RetryHelper] Succeeded on attempt {attempts + 1}");
+                    }
                     return result;
                 }
                 catch (Exception ex)
@@ -22,7 +25,9 @@ namespace InvenAdClicker.Utils
                     attempts++;
                     if (attempts <= retryCount)
                     {
-                        logger.Warn($"[RetryHelper] Attempt {attempts} failed: {ex.Message}. Retrying...");
+                        var delay = baseDelayMs * (int)Math.Pow(2, attempts - 1); // 지수 백오프
+                        logger.Warn($"[RetryHelper] Attempt {attempts} failed: {ex.Message}. Retrying in {delay}ms...");
+                        await Task.Delay(delay);
                     }
                     else
                     {

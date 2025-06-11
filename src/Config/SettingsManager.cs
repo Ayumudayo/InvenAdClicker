@@ -43,6 +43,7 @@ namespace InvenAdClicker.Config
                 IframeTimeoutSeconds = 5,
                 RetryCount = 1,
                 ClickDelayMilliseconds = 500,
+                PageLoadTimeoutMilliseconds = 1000,
                 DisableImages = true,
                 DisableCss = true,
                 DisableFonts = true,
