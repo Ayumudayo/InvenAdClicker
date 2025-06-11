@@ -81,15 +81,15 @@ namespace InvenAdClicker
 
                 logger.Info("All operations completed successfully.");
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) // 취소 및 오류 발생 시에도 진행 상황 출력 중지
             {
                 logger.Warn("Operation was canceled by user.");
-                progress.StopProgress(); // 취소 시에도 진행 상황 출력 중지
+                progress.StopProgress();
             }
             catch (Exception ex)
             {
                 logger.Error("Fatal error occurred", ex);
-                progress.StopProgress(); // 오류 시에도 진행 상황 출력 중지
+                progress.StopProgress();
             }
             finally
             {
