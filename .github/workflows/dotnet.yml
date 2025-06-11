@@ -71,6 +71,9 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Restore dependencies
+        run: dotnet restore InvenAdClicker.sln
+
       - name: Publish
         run: dotnet publish InvenAdClicker.sln --no-build --output ./publish
 
