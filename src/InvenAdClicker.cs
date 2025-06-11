@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using InvenAdClicker.Config;
 using InvenAdClicker.Services.Interfaces;
-using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using System.Diagnostics;
 
