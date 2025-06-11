@@ -59,10 +59,18 @@ jobs:
   release:
     needs: build
     runs-on: windows-latest
-    if: >
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      (needs.build.outputs.code_changed == 'true' || needs.build.outputs.docs_changed == 'true')
+    if: |
+      (
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        (needs.build.outputs.code_changed == 'true' || needs.build.outputs.docs_changed == 'true')
+      ) || (
+        github.event_name == 'pull_request' &&
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == 'main'
+      )
+
 
     steps:
       - uses: actions/checkout@v4
@@ -90,13 +98,13 @@ jobs:
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.2
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEFAULT_BUMP: patch
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
 
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "./publish/InvenAdClicker.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.tag_version.outputs.new_tag }}
-          release_name: Release ${{ steps.tag_version.outputs.new_tag }}
+          name: Release ${{ steps.tag_version.outputs.new_tag }}
+          artifacts: "./publish/InvenAdClicker.zip"
