@@ -5,7 +5,6 @@ using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using System.Collections.Concurrent;
-using System.Security.Policy;
 using System.Threading.Channels;
 
 public class SeleniumAdCollector : IAdCollector
