@@ -1,4 +1,4 @@
-﻿using InvenAdClicker.Config;
+using InvenAdClicker.Config;
 using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using System.Collections.Concurrent;
