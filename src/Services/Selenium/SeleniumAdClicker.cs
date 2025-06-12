@@ -92,12 +92,18 @@ public class SeleniumAdClicker : IAdClicker
         await RetryHelper.ExecuteWithRetryAsync(async () =>
         {
             var driver = browser.Driver;
+
+            // »õ ÅÇÀ¸·Î ¿­±â
+            var original = driver.CurrentWindowHandle;
+            driver.SwitchTo().NewWindow(WindowType.Tab);
+
             driver.Navigate().GoToUrl(link);
             WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
 
-            var clickable = driver.FindElements(By.TagName("a"))
-                .FirstOrDefault(e => e.Displayed && e.Enabled);
-            clickable?.Click();
+            // ÅÇ ´Ý±â
+            driver.Close();
+            driver.SwitchTo().Window(original);
+
             await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
             return Task.CompletedTask;
         }, _settings.RetryCount, _logger);

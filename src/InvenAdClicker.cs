@@ -79,7 +79,7 @@ namespace InvenAdClicker
                 progress.StopProgress();
                 await progressTask; // 진행 상황 출력 태스크가 완료될 때까지 대기
 
-                logger.Info("All operations completed successfully.");
+                logger.Info("All operations completed.");
             }
             catch (OperationCanceledException) // 취소 및 오류 발생 시에도 진행 상황 출력 중지
             {
