@@ -3,7 +3,6 @@ using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
-using OpenQA.Selenium.Support.UI;
 using System.Threading.Channels;
 
 public class SeleniumAdClicker : IAdClicker
@@ -28,7 +27,7 @@ public class SeleniumAdClicker : IAdClicker
     {
         var channel = Channel.CreateUnbounded<(string page, string link)>(new UnboundedChannelOptions { SingleWriter = true, SingleReader = false });
 
-        // ¸µÅ© °ø±Ş
+        // ë§í¬ ê³µê¸‰
         _ = Task.Run(async () =>
         {
             foreach (var (page, links) in pageToLinks)
@@ -40,7 +39,7 @@ public class SeleniumAdClicker : IAdClicker
             channel.Writer.Complete();
         }, cancellationToken);
 
-        // ¿öÄ¿ »ı¼º
+        // ì›Œì»¤ ìƒì„±
         var workers = new Task[_settings.MaxDegreeOfParallelism];
         for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
         {
@@ -84,33 +83,26 @@ public class SeleniumAdClicker : IAdClicker
         _logger.Info("All ad clicking done");
     }
 
-    private async Task ClickWithBrowserAsync(
+    public async Task ClickWithBrowserAsync(
         SeleniumWebBrowser browser,
-        string page, string link,
+        string page,
+        string link,
         CancellationToken cancellationToken)
     {
-        await RetryHelper.ExecuteWithRetryAsync(async () =>
+        try
         {
-            var driver = browser.Driver;
-
-            // »õ ÅÇÀ¸·Î ¿­±â
-            var original = driver.CurrentWindowHandle;
-            driver.SwitchTo().NewWindow(WindowType.Tab);
-
-            driver.Navigate().GoToUrl(link);
-            WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
-
-            // ÅÇ ´İ±â
-            driver.Close();
-            driver.SwitchTo().Window(original);
-
-            await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
-            return Task.CompletedTask;
-        }, _settings.RetryCount, _logger);
+            browser.Driver.Navigate().GoToUrl(link);
+            Thread.Sleep(_settings.ClickDelayMilliseconds);
+        }
+        catch (WebDriverException ex)
+        {
+            _logger.Error($"WebDriver error during click of '{link}': {ex.Message}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Unexpected error during ClickWithBrowserAsync: {ex.Message}");
+            throw;
+        }
     }
-
-    private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
-        => new WebDriverWait(driver, timeout)
-            .Until(d => ((IJavaScriptExecutor)d)
-                .ExecuteScript("return document.readyState").Equals("complete"));
 }
