@@ -29,7 +29,6 @@ public class SeleniumAdCollector : IAdCollector
         var result = new ConcurrentDictionary<string, IEnumerable<string>>();
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true, SingleReader = false });
 
-        // URL ����
         _ = Task.Run(async () =>
         {
             foreach (var url in urls)
@@ -40,7 +39,6 @@ public class SeleniumAdCollector : IAdCollector
             channel.Writer.Complete();
         }, cancellationToken);
 
-        // ��Ŀ ����
         var workers = new Task[_settings.MaxDegreeOfParallelism];
         for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
         {
@@ -49,26 +47,41 @@ public class SeleniumAdCollector : IAdCollector
             {
                 var browser = await _browserPool.AcquireAsync(cancellationToken);
                 _logger.Info($"CollectorWorker {workerId} started");
-
+            
                 try
                 {
                     await foreach (var url in channel.Reader.ReadAllAsync(cancellationToken))
                     {
-                        _progress.Update(url, ProgressStatus.Collecting, threadDelta: 1);
+                        _progress.Update(url, ProgressStatus.Collecting, threadDelta: +1);
+                        List<string> links = null;
+            
                         try
                         {
-                            var links = await CollectWithBrowserAsync(browser, url, cancellationToken);
+                            links = await CollectWithBrowserAsync(browser, url, cancellationToken);
                             result[url] = links;
-
-                            bool collectedCount = links.Count > 0;
-                            _progress.Update(url, collectedCount ? ProgressStatus.Collected : ProgressStatus.NoAds, adsDelta: links.Count(), threadDelta: -1);
-                            _logger.Info($"[Collector{workerId}] {url} => {links.Count} links");
                         }
                         catch (Exception ex)
                         {
                             _logger.Error($"[Collector{workerId}] Failed: {url}", ex);
-                            _progress.Update(url, ProgressStatus.Error, errDelta: 1, threadDelta: -1);
+                            _progress.Update(url, ProgressStatus.Error, errDelta: 1);
+            
+                            // 문제 브라우저 폐기
+                            browser.Dispose();
+                            // 새 브라우저로 교체
+                            browser = await _browserPool.AcquireAsync(cancellationToken);
+            
+                            // 다음 URL 계속 처리
+                            continue;
                         }
+                        finally
+                        {
+                            _progress.Update(url, threadDelta: -1);
+                        }
+            
+                        // 정상 수집 후 상태 업데이트
+                        var status = links.Count > 0 ? ProgressStatus.Collected : ProgressStatus.NoAds;
+                        _progress.Update(url, status, adsDelta: links.Count);
+                        _logger.Info($"[Collector{workerId}] {url} => {links.Count} links");
                     }
                 }
                 finally
@@ -77,6 +90,7 @@ public class SeleniumAdCollector : IAdCollector
                     _logger.Info($"CollectorWorker {workerId} stopped");
                 }
             }, cancellationToken);
+
         }
 
         await Task.WhenAll(workers);
