@@ -55,9 +55,31 @@ public class BrowserPool : IDisposable
 
     public void Release(SeleniumWebBrowser browser)
     {
-        if (browser != null && !_disposed)
+        if (browser == null)
+        {
+            _semaphore.Release();
+            return;
+        }
+
+        try
+        {
+            // 유효성 검사: 내부 WebDriver가 살아있는지 확인
+            _ = browser.Driver.CurrentWindowHandle;
+
+            // 살아 있으면 정상적으로 풀에 반환
             _availableBrowsers.Enqueue(browser);
-        _semaphore.Release();
+        }
+        catch
+        {
+            // 죽어 있으면 즉시 폐기
+            // 풀 크기 보전을 위해
+            // 첫 Acquire 때 새로 생성되도록 semaphore만 풀어줌
+            browser.Dispose();
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     private SeleniumWebBrowser CreateNewBrowser()
