@@ -58,7 +58,10 @@ namespace InvenAdClicker.Services.Selenium
                 options.AddUserProfilePreference(
                     "profile.managed_default_content_settings.fonts", 2);
 
-            _driver = new ChromeDriver(service, options);
+            _driver = new ChromeDriver(
+                service,
+                options,
+                TimeSpan.FromMilliseconds(settings.CommandTimeoutMilliSeconds));
 
             encryption.LoadAndValidateCredentials(out var id, out var pw);
             _driver.Navigate().GoToUrl(_loginUrl);

@@ -54,21 +54,43 @@ public class SeleniumAdClicker : IAdClicker
                     await foreach (var (page, link) in channel.Reader.ReadAllAsync(cancellationToken))
                     {
                         _progress.Update(page, ProgressStatus.Clicking, threadDelta: +1);
-                        try
+
+                        bool success = false;
+                        int attempt = 0;
+
+                        while (attempt < _settings.RetryCount && !success)
                         {
-                            await ClickWithBrowserAsync(browser, page, link, cancellationToken);
-                            _progress.Update(page, clickDelta: 1, pendingClicksDelta: -1);
-                            _logger.Info($"[Clicker{workerId}] Clicked {link}");
+                            attempt++;
+                            try
+                            {
+                                await ClickWithBrowserAsync(browser, page, link, cancellationToken);
+                                success = true;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Warn($"[{workerId}] Attempt {attempt} failed for {link}: {ex.Message}");
+
+                                // 문제 인스턴스 폐기
+                                try { browser.Dispose(); } catch { }
+
+                                // 새 인스턴스 확보
+                                browser = await _browserPool.AcquireAsync(cancellationToken);
+                            }
                         }
-                        catch (Exception ex)
+
+                        if (!success)
                         {
-                            _logger.Error($"[Clicker{workerId}] Failed click {link}", ex);
-                            _progress.Update(page, ProgressStatus.Error, errDelta: 1, pendingClicksDelta: -1);
+                            // 모두 실패했을 때
+                            _logger.Error($"[{workerId}] {_settings.RetryCount} attempts failed for {link}");
+                            _progress.Update(page, errDelta: 1);
                         }
-                        finally
+                        else
                         {
-                            _progress.Update(page, threadDelta: -1);
+                            _progress.Update(page, clickDelta: 1);
                         }
+
+                        _progress.Update(page, pendingClicksDelta: -1);
+                        _progress.Update(page, threadDelta: -1);
                     }
                 }
                 finally
