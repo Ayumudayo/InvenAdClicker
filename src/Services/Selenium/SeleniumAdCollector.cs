@@ -67,6 +67,11 @@ public class SeleniumAdCollector : IAdCollector
             
                             // 문제 브라우저 폐기
                             browser.Dispose();
+
+                            // 폐기 후 Release
+                            // browser = null 이므로 세마포어 릴리즈 됨
+                            _browserPool.Release(browser);
+
                             // 새 브라우저로 교체
                             browser = await _browserPool.AcquireAsync(cancellationToken);
             
