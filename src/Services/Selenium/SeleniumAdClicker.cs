@@ -3,7 +3,12 @@ using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 
 public class SeleniumAdClicker : IAdClicker
 {
@@ -73,6 +78,9 @@ public class SeleniumAdClicker : IAdClicker
                                 // 문제 인스턴스 폐기
                                 try { browser.Dispose(); } catch { }
 
+                                // 세마포어 릴리즈
+                                _browserPool.Release(browser);
+
                                 // 새 인스턴스 확보
                                 browser = await _browserPool.AcquireAsync(cancellationToken);
                             }
@@ -114,7 +122,7 @@ public class SeleniumAdClicker : IAdClicker
         try
         {
             browser.Driver.Navigate().GoToUrl(link);
-            Thread.Sleep(_settings.ClickDelayMilliseconds);
+            await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
         }
         catch (WebDriverException ex)
         {

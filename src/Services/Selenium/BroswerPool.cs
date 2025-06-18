@@ -1,7 +1,10 @@
 using InvenAdClicker.Config;
 using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
+using System;
 using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 
 public class BrowserPool : IDisposable
 {

@@ -1,3 +1,5 @@
+using System;
+
 namespace InvenAdClicker.Utils
 {
     public interface ILogger
