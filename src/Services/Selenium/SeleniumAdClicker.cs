@@ -76,7 +76,11 @@ public class SeleniumAdClicker : IAdClicker
                                 _logger.Warn($"[{workerId}] Attempt {attempt} failed for {link}: {ex.Message}");
 
                                 // 문제 인스턴스 폐기
-                                try { browser.Dispose(); } catch { }
+                                try
+                                {
+                                    _logger.Info($"[{workerId}] Disposing browser instance due to error");
+                                    browser.Dispose();
+                                } catch { }
 
                                 // 세마포어 릴리즈
                                 _browserPool.Release(browser);
