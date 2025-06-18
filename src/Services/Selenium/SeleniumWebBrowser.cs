@@ -11,6 +11,7 @@ namespace InvenAdClicker.Services.Selenium
     public class SeleniumWebBrowser : IDisposable
     {
         private readonly ChromeDriver _driver;
+        private readonly ChromeDriverService _service;
         private readonly ILogger _logger;
         private readonly string _loginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";
 
@@ -19,11 +20,11 @@ namespace InvenAdClicker.Services.Selenium
             _logger = logger;
 
             // ChromeDriverService 설정
-            var service = ChromeDriverService.CreateDefaultService();
-            service.SuppressInitialDiagnosticInformation = true;  // 초기 진단 메시지 억제
-            service.HideCommandPromptWindow = true;
-            service.LogPath = "NUL";
-            service.EnableVerboseLogging = false; 
+            _service = ChromeDriverService.CreateDefaultService();
+            _service.SuppressInitialDiagnosticInformation = true;  // 초기 진단 메시지 억제
+            _service.HideCommandPromptWindow = true;
+            _service.LogPath = "NUL";
+            _service.EnableVerboseLogging = false; 
 
             // ChromeOptions 설정
             var options = new ChromeOptions();
@@ -60,7 +61,7 @@ namespace InvenAdClicker.Services.Selenium
                     "profile.managed_default_content_settings.fonts", 2);
 
             _driver = new ChromeDriver(
-                service,
+                _service,
                 options,
                 TimeSpan.FromMilliseconds(settings.CommandTimeoutMilliSeconds));
 
@@ -124,6 +125,18 @@ namespace InvenAdClicker.Services.Selenium
             catch (Exception ex)
             {
                 _logger.Warn($"Error during browser dispose: {ex.Message}");
+            }
+            finally
+            {
+                try
+                {
+                    _service.Dispose();
+                    _logger.Info("Driver service disposed.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"Error disposing service: {ex.Message}");
+                }
             }
         }
     }

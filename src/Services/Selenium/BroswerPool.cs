@@ -3,11 +3,13 @@ using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 public class BrowserPool : IDisposable
 {
+    private readonly List<SeleniumWebBrowser> _allBrowsers = new();
     private readonly ConcurrentQueue<SeleniumWebBrowser> _availableBrowsers;
     private readonly SemaphoreSlim _semaphore;
     private readonly AppSettings _settings;
@@ -87,9 +89,11 @@ public class BrowserPool : IDisposable
 
     private SeleniumWebBrowser CreateNewBrowser()
     {
+        var browser = new SeleniumWebBrowser(_settings, _logger, _encryption);
         Interlocked.Increment(ref _createdInstances);
-        _logger.Info($"Creating browser instance #{_createdInstances}");
-        return new SeleniumWebBrowser(_settings, _logger, _encryption);
+        lock (_allBrowsers) { _allBrowsers.Add(browser); }
+        _logger.Info($"Creating new browser instance #{_allBrowsers.Count}");
+        return browser;
     }
 
     public void Dispose()
@@ -97,10 +101,25 @@ public class BrowserPool : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        while (_availableBrowsers.TryDequeue(out var browser))
-            browser.Dispose();
+        // 흐름 상 Lock이 필요한 구간에서 호출되진 않지만,
+        // 혹시 모르는 만약을 위해 Lock 사용
+        lock (_allBrowsers)
+        {
+            foreach (var browser in _allBrowsers)
+            {
+                try
+                {
+                    browser.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"Error disposing browser: {ex.Message}");
+                }
+            }
+            _allBrowsers.Clear();
+        }
 
         _semaphore.Dispose();
-        _logger.Info($"BrowserPool disposed. Created: {_createdInstances}");
+        _logger.Info($"Browser pool disposed. Total instances created: {_createdInstances}");
     }
 }
