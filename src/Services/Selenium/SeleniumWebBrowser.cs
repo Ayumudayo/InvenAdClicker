@@ -2,9 +2,12 @@ using InvenAdClicker.Config;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.DevTools;
 using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace InvenAdClicker.Services.Selenium
 {
@@ -13,7 +16,8 @@ namespace InvenAdClicker.Services.Selenium
         private readonly ChromeDriver _driver;
         private readonly ChromeDriverService _service;
         private readonly ILogger _logger;
-        private readonly string _loginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";
+        private readonly string _loginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";        
+        private short _instanceId;
 
         public SeleniumWebBrowser(AppSettings settings, ILogger logger, Encryption encryption)
         {
@@ -24,7 +28,7 @@ namespace InvenAdClicker.Services.Selenium
             _service.SuppressInitialDiagnosticInformation = true;  // 초기 진단 메시지 억제
             _service.HideCommandPromptWindow = true;
             _service.LogPath = "NUL";
-            _service.EnableVerboseLogging = false; 
+            _service.EnableVerboseLogging = false;
 
             // ChromeOptions 설정
             var options = new ChromeOptions();
@@ -106,11 +110,18 @@ namespace InvenAdClicker.Services.Selenium
             else
             {
                 var noticeText = _driver.FindElement(By.Id("notice")).Text.Trim();
-                _logger.Error($"로그인 실패: {noticeText}");
+                _logger.Error($"Instance #{_instanceId} | 로그인 실패: {noticeText}");
                 _driver.Quit();
-                throw new InvalidOperationException($"Login failed: {noticeText}");
+                throw new InvalidOperationException($"Instance #{_instanceId} | Login failed: {noticeText}");
             }
         }
+
+        public void SetInstanceId(short id)
+        {
+            _instanceId = id;
+        }
+
+        public short InstanceId => _instanceId;
 
         public IWebDriver Driver => _driver;
 
@@ -118,26 +129,53 @@ namespace InvenAdClicker.Services.Selenium
         {
             try
             {
-                _driver.Quit();
-                _driver.Dispose();
-                _logger.Info("Browser disposed.");
+                if (_driver != null)
+                {
+                    // 리스트로 복사
+                    // foreach 중 컬렉션 변경 방지
+                    foreach (var handle in _driver.WindowHandles.ToList())
+                    {
+                        _driver.SwitchTo().Window(handle);
+                        _driver.Close();
+                    }
+                    _logger.Info($"Instance #{_instanceId} | All windows closed.");
+                }
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Error during browser dispose: {ex.Message}");
+                _logger.Warn($"Instance #{_instanceId} | Error while closing windows: {ex.Message}");
+            }
+
+            try
+            {
+                if (_driver != null)
+                {
+                    _driver.Quit();
+                    _driver.Dispose();
+                    _logger.Info($"Instance #{_instanceId} | Browser disposed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Instance #{_instanceId} | Error during browser dispose: {ex.Message}");
             }
             finally
             {
                 try
                 {
-                    _service.Dispose();
-                    _logger.Info("Driver service disposed.");
+                    if (_service != null)
+                    {
+                        _service.Dispose();
+                        _logger.Info($"Instance #{_instanceId} | Driver service disposed.");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.Warn($"Error disposing service: {ex.Message}");
+                    _logger.Warn($"Instance #{_instanceId} | Error disposing service: {ex.Message}");
                 }
             }
+
+            GC.SuppressFinalize(this);
         }
     }
 }

@@ -30,9 +30,11 @@ public class BrowserPool : IDisposable
 
         Console.WriteLine("Browser Pool 생성 중...");
         // 미리 브라우저 인스턴스 생성
-        for (int i = 0; i < _maxInstances; i++)
+        // 추가 1개 인스턴스는 계정 정보 체크용 브라우저로 소비
+        for (int i = 0; i < _maxInstances + 1; i++)
         {
             var browser = CreateNewBrowser();
+            browser.SetInstanceId((short)(_createdInstances));
             _availableBrowsers.Enqueue(browser);
         }
         Console.WriteLine("Browser Pool 생성 완료");
@@ -58,7 +60,7 @@ public class BrowserPool : IDisposable
         return CreateNewBrowser();
     }
 
-    public void Release(SeleniumWebBrowser browser)
+    public void Release(SeleniumWebBrowser? browser)
     {
         if (browser == null)
         {

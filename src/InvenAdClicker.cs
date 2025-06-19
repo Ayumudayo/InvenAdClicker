@@ -64,7 +64,8 @@ namespace InvenAdClicker
                 using (var testBrowser = await browserPool.AcquireAsync(cts.Token))
                 {
                     Console.WriteLine("계정 유효성 검증 성공");
-                    browserPool.Release(testBrowser);
+                    testBrowser.Dispose(); // 로그인 테스트용 브라우저는 사용 후 즉시 해제
+                    browserPool.Release(null);
                 }
 
                 Thread.Sleep(1000);
@@ -102,6 +103,9 @@ namespace InvenAdClicker
                 stopwatch.Stop();
                 int minutes = (int)stopwatch.Elapsed.TotalMinutes;
                 int seconds = stopwatch.Elapsed.Seconds;
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
 
                 Console.CursorVisible = true;
                 Console.WriteLine($"Total Execution Time: {minutes}Min {seconds}Sec");
