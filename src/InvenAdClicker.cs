@@ -104,12 +104,16 @@ namespace InvenAdClicker
                 int minutes = (int)stopwatch.Elapsed.TotalMinutes;
                 int seconds = stopwatch.Elapsed.Seconds;
 
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
 
                 Console.CursorVisible = true;
                 Console.WriteLine($"Total Execution Time: {minutes}Min {seconds}Sec");
-                Console.WriteLine("작업 완료. 아무 키나 눌러 종료합니다.");
+                Console.WriteLine("작업 완료. 리소스 정리 중...");
+
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+                Console.WriteLine("정리 완료. 아무 키나 눌러 종료합니다.");
                 Console.ReadKey();
             }
         }
