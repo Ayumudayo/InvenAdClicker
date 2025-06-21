@@ -54,6 +54,8 @@ namespace InvenAdClicker.Services.Selenium
             options.AddExcludedArgument("enable-automation");   // 자동화 경고 제거
             options.AddArgument("--silent");                    // 추가 Silent 모드
 
+            options.AddUserProfilePreference("profile.default_content_setting_values.sound", 2);
+
             if (settings.DisableImages)
                 options.AddUserProfilePreference(
                     "profile.managed_default_content_settings.images", 2);
@@ -151,7 +153,6 @@ namespace InvenAdClicker.Services.Selenium
                 if (_driver != null)
                 {
                     _driver.Quit();
-                    _driver.Dispose();
                     _logger.Info($"Instance #{_instanceId} | Browser disposed.");
                 }
             }
@@ -161,6 +162,9 @@ namespace InvenAdClicker.Services.Selenium
             }
             finally
             {
+                if(_driver != null)
+                    _driver.Dispose();
+
                 try
                 {
                     if (_service != null)
