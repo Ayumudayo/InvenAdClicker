@@ -2,7 +2,6 @@ using InvenAdClicker.Config;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.DevTools;
 using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
 using System;
@@ -85,7 +84,6 @@ namespace InvenAdClicker.Services.Selenium
                 if (!string.IsNullOrEmpty(debuggerPortStr) && int.TryParse(debuggerPortStr, out var debuggerPort))
                 {
                     _logger.Info($"Instance #{_instanceId} | Debugger port found: {debuggerPort}");
-                    // 해당 포트를 사용하는 PID를 찾습니다.
                     _browserProcessId = GetProcessIdByPort(debuggerPort);
                     if (_browserProcessId.HasValue)
                     {
@@ -217,7 +215,7 @@ namespace InvenAdClicker.Services.Selenium
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed) return;
-            // 3. 최후의 수단: 추적된 PID를 직접 강제 종료
+            // Last Resort: 추적된 PID를 직접 강제 종료
             if (_browserProcessId.HasValue)
             {
                 try
