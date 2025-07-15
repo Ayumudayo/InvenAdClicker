@@ -7,7 +7,9 @@ using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace InvenAdClicker.Services.Selenium
 {
@@ -18,6 +20,7 @@ namespace InvenAdClicker.Services.Selenium
         private readonly ILogger _logger;
         private readonly string _loginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";        
         private short _instanceId;
+        private int? _browserProcessId = null;
 
         public SeleniumWebBrowser(AppSettings settings, ILogger logger, Encryption encryption)
         {
@@ -50,7 +53,8 @@ namespace InvenAdClicker.Services.Selenium
                     "--proxy-bypass-list=*",
                     "--disable-blink-features=AutomationControlled",
                     "--log-level=3",
-                    "--disable-logging"
+                    "--disable-logging",
+                    "--remote-debugging-port=0" // 임의의 사용 가능한 포트를 사용하도록 설정
                 );
                 options.AddExcludedArgument("enable-logging");      // 브라우저/CEF 로그 제거
                 options.AddExcludedArgument("enable-automation");   // 자동화 경고 제거
@@ -72,6 +76,30 @@ namespace InvenAdClicker.Services.Selenium
                     _service,
                     options,
                     TimeSpan.FromMilliseconds(settings.CommandTimeoutMilliSeconds));
+
+                // 드라이버의 Capabilities에서 디버거 주소를 가져옴
+                var capabilities = _driver.Capabilities;
+                var debuggerAddress = capabilities.GetCapability("goog:chromeOptions") as Dictionary<string, object>;
+                var debuggerPortStr = debuggerAddress?["debuggerAddress"]?.ToString().Split(':').Last();
+
+                if (!string.IsNullOrEmpty(debuggerPortStr) && int.TryParse(debuggerPortStr, out var debuggerPort))
+                {
+                    _logger.Info($"Instance #{_instanceId} | Debugger port found: {debuggerPort}");
+                    // 해당 포트를 사용하는 PID를 찾습니다.
+                    _browserProcessId = GetProcessIdByPort(debuggerPort);
+                    if (_browserProcessId.HasValue)
+                    {
+                        _logger.Info($"Instance #{_instanceId} | Successfully identified chrome.exe PID: {_browserProcessId.Value}");
+                    }
+                    else
+                    {
+                        _logger.Warn($"Instance #{_instanceId} | Could not find process using port {debuggerPort}.");
+                    }
+                }
+                else
+                {
+                    _logger.Warn($"Instance #{_instanceId} | Could not retrieve debugger port from capabilities.");
+                }
 
                 encryption.LoadAndValidateCredentials(out var id, out var pw);
                 _driver.Navigate().GoToUrl(_loginUrl);
@@ -137,6 +165,41 @@ namespace InvenAdClicker.Services.Selenium
 
         public IWebDriver Driver => _driver;
 
+        private int? GetProcessIdByPort(int port)
+        {
+            try
+            {
+                using var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "netstat.exe",
+                        Arguments = "-a -n -o",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true
+                    }
+                };
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                // netstat 출력에서 "TCP 0.0.0.0:port ... LISTENING pid" OR "TCP [::]:port ... LISTENING pid" 패턴을 찾음
+                string pattern = $@"TCP\s+.*?:{port}\s+.*?LISTENING\s+(\d+)";
+                Match match = Regex.Match(output, pattern);
+
+                if (match.Success)
+                {
+                    return int.Parse(match.Groups[1].Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Failed to get process ID by port {port}: {ex.Message}");
+            }
+            return null;
+        }
+
         private bool _disposed = false;
 
         // Dtor 추가
@@ -154,6 +217,26 @@ namespace InvenAdClicker.Services.Selenium
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed) return;
+            // 3. 최후의 수단: 추적된 PID를 직접 강제 종료
+            if (_browserProcessId.HasValue)
+            {
+                try
+                {
+                    var p = Process.GetProcessById(_browserProcessId.Value);
+                    if (p != null && !p.HasExited)
+                    {
+                        _logger.Warn($"Instance #{_instanceId} | Found zombie chrome.exe PID {_browserProcessId.Value}. Killing it.");
+                        p.Kill(true);
+                    }
+                }
+                catch (ArgumentException) { /* 프로세스가 이미 종료됨 */ }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Instance #{_instanceId} | Error during final zombie cleanup for PID {_browserProcessId.Value}: {ex.Message}");
+                }
+            }
+
+            _disposed = true;
 
             if (disposing)
             {
@@ -161,31 +244,68 @@ namespace InvenAdClicker.Services.Selenium
             }
 
             // 비관리 리소스 정리
+            int? serviceProcessId = _service?.ProcessId;
+
+            // 정상 종료 시도
             try
             {
-                _driver?.Quit(); // Quit이 모든 창을 닫고 드라이버 프로세스를 종료하므로 더 안전함
-                _logger.Info($"Instance #{_instanceId} | Driver Quit.");
+                _driver?.Quit();
+                _logger.Info($"Instance #{_instanceId} | Driver.Quit() successful.");
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Instance #{_instanceId} | Exception during driver Quit: {ex.Message}");
+                _logger.Warn($"Instance #{_instanceId} | Driver.Quit() failed (might be expected if driver is already unresponsive): {ex.Message.Split('\n').FirstOrDefault()}");
             }
             finally
             {
                 _driver?.Dispose();
             }
 
+            // 서비스 Dispose 시도
             try
             {
                 _service?.Dispose();
-                _logger.Info($"Instance #{_instanceId} | Service Disposed.");
+                _logger.Info($"Instance #{_instanceId} | Service.Dispose() successful.");
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Instance #{_instanceId} | Exception during service Dispose: {ex.Message}");
+                _logger.Warn($"Instance #{_instanceId} | Service.Dispose() failed: {ex.Message}");
             }
 
-            _disposed = true;
+            // Last Resort: 프로세스 트리 강제 종료
+            if (serviceProcessId.HasValue && serviceProcessId > 0)
+            {
+                try
+                {
+                    var process = Process.GetProcessById(serviceProcessId.Value);
+                    if (process != null && !process.HasExited)
+                    {
+                        _logger.Warn($"Instance #{_instanceId} | Service process {serviceProcessId} is still running. Attempting to kill the process tree.");
+                        var taskkill = new Process
+                        {
+                            StartInfo =
+                            {
+                                FileName = "taskkill",
+                                Arguments = $"/PID {serviceProcessId.Value} /T /F",
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            }
+                        };
+                        taskkill.Start();
+                        taskkill.WaitForExit();
+                        _logger.Info($"Instance #{_instanceId} | Executed taskkill on PID tree {serviceProcessId}. Exit code: {taskkill.ExitCode}");
+                    }
+                }
+                catch (ArgumentException) 
+                {
+                    // 프로세스가 이미 종료된 경우
+                    _logger.Info($"Instance #{_instanceId} | Service process {serviceProcessId} already exited.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Instance #{_instanceId} | Failed to execute taskkill on PID {serviceProcessId}: {ex.Message}");
+                }
+            }
         }
     }
 }

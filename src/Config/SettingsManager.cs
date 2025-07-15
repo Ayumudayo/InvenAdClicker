@@ -46,6 +46,7 @@ namespace InvenAdClicker.Config
                 RetryCount = 1,
                 ClickDelayMilliseconds = 500,
                 PageLoadTimeoutMilliseconds = 1000,
+                CollectionAttempts = 1,
                 DisableImages = true,
                 DisableCss = true,
                 DisableFonts = true,

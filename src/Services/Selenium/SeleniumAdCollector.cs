@@ -111,27 +111,45 @@ public class SeleniumAdCollector : IAdCollector
         SeleniumWebBrowser browser, string url, CancellationToken cancellationToken)
     {
         var driver = browser.Driver;
-        driver.Navigate().GoToUrl(url);
-        WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+        var allLinks = new HashSet<string>();
 
-        var links = new List<string>();
-        foreach (var iframe in driver.FindElements(By.TagName("iframe")))
+        for (int i = 0; i < _settings.CollectionAttempts; i++)
         {
-            try
+            cancellationToken.ThrowIfCancellationRequested();
+
+            driver.Navigate().GoToUrl(url);
+            WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+
+            foreach (var iframe in driver.FindElements(By.TagName("iframe")))
             {
-                driver.SwitchTo().Frame(iframe);
-                links.AddRange(driver.FindElements(By.TagName("a"))
-                    .Select(e => e.GetAttribute("href"))
-                    .Where(h => !string.IsNullOrEmpty(h)));
+                try
+                {
+                    driver.SwitchTo().Frame(iframe);
+                    var linksInFrame = driver.FindElements(By.TagName("a"))
+                        .Select(e => e.GetAttribute("href"))
+                        .Where(h => !string.IsNullOrEmpty(h));
+                    foreach (var link in linksInFrame)
+                    {
+                        allLinks.Add(link);
+                    }
+                }
+                catch (Exception ex)
+                { 
+                    _logger.Warn($"[Collector] iframe fail {url}: {ex.Message}");
+                }
+                finally
+                {
+                    driver.SwitchTo().DefaultContent();
+                }
             }
-            catch (Exception ex)
+
+            if (i < _settings.CollectionAttempts - 1)
             {
-                _logger.Warn($"[Collector] iframe fail {url}: {ex.Message}");
+                driver.Navigate().Refresh();
             }
-            finally { driver.SwitchTo().DefaultContent(); }
         }
 
-        return links;
+        return allLinks.ToList();
     }
 
     private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
