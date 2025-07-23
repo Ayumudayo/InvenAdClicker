@@ -144,11 +144,7 @@ namespace InvenAdClicker.Services.Selenium
 
                     if (encryption.EnterCredentials())
                     {
-                        Console.WriteLine("새로운 자격증명을 저장했습니다. 프로그램을 다시 실행하세요.");
-
-                        _driver?.Quit();
-                        _service?.Dispose();
-                        Environment.Exit(0); // 정상 종료
+                        throw new ApplicationException("새로운 자격증명을 저장했습니다. 프로그램을 다시 실행하세요.");
                     }
                     else
                     {

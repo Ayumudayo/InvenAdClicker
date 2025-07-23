@@ -16,8 +16,7 @@ namespace InvenAdClicker.Config
             {
                 logger.Warn($"{SettingsFile}이 존재하지 않습니다. 기본 템플릿을 생성합니다.");
                 CreateDefaultSettingsFile(logger);
-                Console.WriteLine($"{SettingsFile} 파일이 생성되었습니다. 설정을 완료 후 재실행해주세요.");
-                Environment.Exit(0);
+                throw new ApplicationException($"{SettingsFile} 파일이 생성되었습니다. 설정을 완료 후 재실행해주세요.");
             }
 
             try
