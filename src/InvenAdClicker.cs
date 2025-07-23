@@ -84,18 +84,27 @@ namespace InvenAdClicker
 
                 logger.Info("All operations completed.");
             }
-            catch (OperationCanceledException) // 취소 및 오류 발생 시에도 진행 상황 출력 중지
+            catch (OperationCanceledException)
             {
                 logger.Warn("Operation was canceled by user.");
-                progress.StopProgress();
+            }
+            catch (ApplicationException ex)
+            {
+                // 예측된 종료 상황
+                Console.WriteLine(ex.Message);
+                logger.Warn(ex.Message);
             }
             catch (Exception ex)
             {
-                logger.Error("Fatal error occurred", ex);
-                progress.StopProgress();
+                // 그 외 모든 예외 처리
+                var errorMessage = "An unexpected error occurred. Check logs for details.";
+                Console.WriteLine(errorMessage);
+                logger.Error(errorMessage, ex);
             }
             finally
             {
+                progress.StopProgress();
+
                 // 리소스 정리
                 browserPool.Dispose();
                 await host.StopAsync();

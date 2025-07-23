@@ -141,15 +141,22 @@ namespace InvenAdClicker.Services.Selenium
                 {
                     var noticeText = _driver.FindElement(By.Id("notice")).Text.Trim();
                     _logger.Error($"Instance #{_instanceId} | 로그인 실패: {noticeText}");
-                    throw new InvalidOperationException($"Instance #{_instanceId} | Login failed: {noticeText}");
+
+                    if (encryption.EnterCredentials())
+                    {
+                        throw new ApplicationException("새로운 자격증명을 저장했습니다. 프로그램을 다시 실행하세요.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("자격증명 입력에 실패했습니다. 프로그램을 종료합니다.");
+                        throw new ApplicationException("로그인 실패 및 자격증명 입력 실패");
+                    }
                 }
             }
             catch (Exception)
             {
-                // 생성자에서 예외 발생 시, 생성된 리소스를 즉시 정리
                 _driver?.Quit();
                 _service?.Dispose();
-                // 예외를 다시 던져서 생성 실패를 알림
                 throw;
             }
         }
