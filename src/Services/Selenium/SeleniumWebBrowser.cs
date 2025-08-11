@@ -1,4 +1,4 @@
-using InvenAdClicker.Config;
+using InvenAdClicker.Models;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;

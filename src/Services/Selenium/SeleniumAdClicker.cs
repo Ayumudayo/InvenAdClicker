@@ -1,4 +1,4 @@
-using InvenAdClicker.Config;
+using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;

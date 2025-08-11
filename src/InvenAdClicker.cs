@@ -1,7 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using InvenAdClicker.Config;
+using Microsoft.Extensions.Configuration;
+using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Utils;
 using System;
@@ -29,12 +30,13 @@ namespace InvenAdClicker
 
             using IHost host = Host.CreateDefaultBuilder(args)
                 .ConfigureLogging(logging => logging.ClearProviders())
-                .ConfigureServices((_, services) =>
+                .ConfigureServices((hostContext, services) =>
                 {
+                    var appSettings = hostContext.Configuration.GetSection("AppSettings").Get<AppSettings>()
+                        ?? throw new ApplicationException("appsettings.json 파일에서 AppSettings 섹션을 찾을 수 없거나 비어있습니다.");
+                    services.AddSingleton(appSettings);
+
                     services.AddSingleton<CustomLogger, Log4Net>();
-                    services.AddSingleton<SettingsManager>();
-                    services.AddSingleton(provider =>
-                        provider.GetRequiredService<SettingsManager>().Settings);
                     services.AddSingleton<Encryption>();
                     services.AddSingleton(provider => ProgressTracker.Instance);
 

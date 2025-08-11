@@ -1,4 +1,4 @@
-namespace InvenAdClicker.Config
+namespace InvenAdClicker.Models
 {
     public class AppSettings
     {
