@@ -81,6 +81,12 @@ namespace InvenAdClicker.Utils
 
         public void PrintProgress()
         {
+            if (_map.IsEmpty)
+            {
+                Console.WriteLine("대상 URL이 없습니다. 작업을 종료합니다.");
+                return;
+            }
+
             int urlW = Math.Max(20, _map.Keys.Max(k => k.Length) + 2);
             int statusW = Enum.GetNames(typeof(ProgressStatus)).Max(s => s.Length) + 2;
 
@@ -120,7 +126,7 @@ namespace InvenAdClicker.Utils
                 }
 
                 if (_map.Values.All(info =>
-                    info.Status == ProgressStatus.Finished || info.Status == ProgressStatus.Error))
+                    info.Status == ProgressStatus.Finished || info.Status == ProgressStatus.Error || info.Status == ProgressStatus.NoAds))
                 {
                     Thread.Sleep(1000);
                     Console.WriteLine();
