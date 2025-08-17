@@ -100,7 +100,7 @@ public class PlaywrightAdCollector : IAdCollector
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = _settings.PageLoadTimeoutMilliseconds });
+            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = _settings.PageLoadTimeoutMilliseconds });
 
             var iframeHandles = await page.QuerySelectorAllAsync("iframe");
             foreach (var iframeHandle in iframeHandles)
@@ -139,7 +139,7 @@ public class PlaywrightAdCollector : IAdCollector
 
             if (i < _settings.CollectionAttempts - 1)
             {
-                await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.Load, Timeout = _settings.PageLoadTimeoutMilliseconds });
+                await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = _settings.PageLoadTimeoutMilliseconds });
             }
         }
 

@@ -46,6 +46,7 @@ namespace InvenAdClicker.Services.Selenium
             // 남는 워커가 클릭 작업으로 전환되도록 제어
             int urlsRemaining = urls.Length; // 아직 작업에 착수하지 않은 URL 수
             int activeCollectors = 0;        // 현재 수집 중 워커 수
+            int activeClickers = 0;          // 현재 클릭 중 워커 수
             var clickWriter = clickChannel.Writer;
 
             // URL 공급
@@ -92,9 +93,12 @@ namespace InvenAdClicker.Services.Selenium
                         {
                             bool didWork = false;
 
+                            // 목표 수집 워커 수: 남은 URL 수와 워커 수의 최소값
+                            int remaining = Volatile.Read(ref urlsRemaining);
+                            int targetCollectors = Math.Min(_settings.MaxDegreeOfParallelism, Math.Max(remaining, 0));
+
                             // 1) 수집 슬롯이 남아있고, 아직 착수하지 않은 URL이 있는 경우 우선 수집 시도
-                            if (Volatile.Read(ref urlsRemaining) > 0 &&
-                                Volatile.Read(ref activeCollectors) < Volatile.Read(ref urlsRemaining))
+                            if (remaining > 0 && Volatile.Read(ref activeCollectors) < targetCollectors)
                             {
                                 // 수집 슬롯 예약
                                 Interlocked.Increment(ref activeCollectors);
@@ -125,9 +129,11 @@ namespace InvenAdClicker.Services.Selenium
 
                             if (!didWork)
                             {
-                                // 2) 클릭 작업 처리 시도
-                                if (linkReader.TryRead(out var work))
+                                // 2) 클릭 작업 처리 시도 (남는 워커 수 만큼만 허용)
+                                int allowedClickers = _settings.MaxDegreeOfParallelism - targetCollectors; // 남는 워커 수
+                                if (allowedClickers > 0 && Volatile.Read(ref activeClickers) < allowedClickers && linkReader.TryRead(out var work))
                                 {
+                                    Interlocked.Increment(ref activeClickers);
                                     try
                                     {
                                         await ClickOneAsync(browser, work.page, work.link, cancellationToken);
@@ -139,6 +145,10 @@ namespace InvenAdClicker.Services.Selenium
                                         try { browser.Dispose(); } catch { }
                                         _browserPool.Release(browser);
                                         browser = await _browserPool.AcquireAsync(cancellationToken);
+                                    }
+                                    finally
+                                    {
+                                        Interlocked.Decrement(ref activeClickers);
                                     }
                                 }
                             }
@@ -274,8 +284,19 @@ namespace InvenAdClicker.Services.Selenium
         }
 
         private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
-            => new OpenQA.Selenium.Support.UI.WebDriverWait(driver, timeout)
-                .Until(d => ((IJavaScriptExecutor)d)
-                    .ExecuteScript("return document.readyState").Equals("complete"));
+        {
+            var end = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < end)
+            {
+                try
+                {
+                    var state = ((IJavaScriptExecutor)driver).ExecuteScript("return document.readyState")?.ToString();
+                    if (state == "complete" || state == "interactive") return;
+                }
+                catch { }
+                Thread.Sleep(100);
+            }
+            _logger.Warn($"[Pipeline] 페이지 로드 타임아웃({timeout.TotalMilliseconds}ms). 현재 상태로 진행합니다.");
+        }
     }
 }

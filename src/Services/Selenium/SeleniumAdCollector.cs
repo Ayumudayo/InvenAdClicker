@@ -153,7 +153,18 @@ public class SeleniumAdCollector : IAdCollector
     }
 
     private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
-        => new WebDriverWait(driver, timeout)
-            .Until(d => ((IJavaScriptExecutor)d)
-                .ExecuteScript("return document.readyState").Equals("complete"));
+    {
+        var end = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < end)
+        {
+            try
+            {
+                var state = ((IJavaScriptExecutor)driver).ExecuteScript("return document.readyState")?.ToString();
+                if (state == "complete" || state == "interactive") return;
+            }
+            catch { }
+            Thread.Sleep(100);
+        }
+        _logger.Warn($"[Collector] 페이지 로드 타임아웃({timeout.TotalMilliseconds}ms). 현재 상태로 진행합니다.");
+    }
 }

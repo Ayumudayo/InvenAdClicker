@@ -44,6 +44,7 @@ namespace InvenAdClicker.Services.Playwright
 
             int urlsRemaining = urls.Length; // 아직 착수하지 않은 URL 수
             int activeCollectors = 0;        // 현재 수집 중 워커 수
+            int activeClickers = 0;          // 현재 클릭 중 워커 수
             var clickWriter = clickChannel.Writer;
 
             // URL 공급
@@ -84,9 +85,12 @@ namespace InvenAdClicker.Services.Playwright
                         {
                             bool didWork = false;
 
+                            // 목표 수집 워커 수: 남은 URL 수와 워커 수의 최소값
+                            int remaining = Volatile.Read(ref urlsRemaining);
+                            int targetCollectors = Math.Min(_settings.MaxDegreeOfParallelism, Math.Max(remaining, 0));
+
                             // 1) 수집 슬롯이 남아있고 URL이 남아있으면 수집
-                            if (Volatile.Read(ref urlsRemaining) > 0 &&
-                                Volatile.Read(ref activeCollectors) < Volatile.Read(ref urlsRemaining))
+                            if (remaining > 0 && Volatile.Read(ref activeCollectors) < targetCollectors)
                             {
                                 Interlocked.Increment(ref activeCollectors);
                                 try
@@ -111,9 +115,11 @@ namespace InvenAdClicker.Services.Playwright
 
                             if (!didWork)
                             {
-                                // 2) 클릭 작업 처리 시도
-                                if (linkReader.TryRead(out var work))
+                                // 2) 클릭 작업 처리 시도 (남는 워커 수 만큼만 허용)
+                                int allowedClickers = _settings.MaxDegreeOfParallelism - targetCollectors; // 남는 워커 수
+                                if (allowedClickers > 0 && Volatile.Read(ref activeClickers) < allowedClickers && linkReader.TryRead(out var work))
                                 {
+                                    Interlocked.Increment(ref activeClickers);
                                     try
                                     {
                                         await ClickOneAsync(page, work.page, work.link, cancellationToken);
@@ -123,6 +129,10 @@ namespace InvenAdClicker.Services.Playwright
                                     {
                                         _logger.Warn($"[Clicker{workerId}] 클릭 중 예외: {ex.Message}");
                                         page = await _browserPool.RenewAsync(page);
+                                    }
+                                    finally
+                                    {
+                                        Interlocked.Decrement(ref activeClickers);
                                     }
                                 }
                             }

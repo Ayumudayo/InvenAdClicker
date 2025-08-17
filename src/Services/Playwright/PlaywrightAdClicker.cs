@@ -97,7 +97,7 @@ public class PlaywrightAdClicker : IAdClicker
     {
         try
         {
-            await page.GotoAsync(link, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = _settings.PageLoadTimeoutMilliseconds });
+            await page.GotoAsync(link, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = _settings.PageLoadTimeoutMilliseconds });
             await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
         }
         catch (Exception ex)

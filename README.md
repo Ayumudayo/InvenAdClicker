@@ -1,71 +1,72 @@
 # InvenAdClicker
 
-인벤 광클클을 자동화해주는 콘솔 프로그램입니다. Selenium WebDriver (Chrome)을 이용하여 인벤에 로그인한 뒤, 지정한 웹 페이지의 모든 광고를 대신 클릭해주는 도구입니다.
-편하게 경험치 벌자구요.
+인벤 광고 클릭 자동화를 위한 콘솔 프로그램입니다. Selenium WebDriver(Chrome) 또는 Microsoft Playwright를 사용해 로그인 후 지정된 부모 URL들의 광고 링크를 수집하고, 남는 워커가 발생하는 시점부터 클릭을 병렬로 시작합니다(예: 워커 3개, 남은 부모 URL 2개 → 1개 워커는 클릭으로 전환). 기본 네비게이션 대기 기준은 DOMContentLoaded이며(Playwright), Selenium은 document.readyState가 complete/interactive이면 진행합니다.
 
 ## 주요 기능
 
-* **자동 로그인 및 보안 저장**: 프로그램 실행 시 한 번 인벤 계정 정보를 입력하면, 해당 정보가 암호화되어 로컬에 저장됩니다. 이후부터는 자동으로 로그인하여 광고 클릭을 진행합니다. 해당 정보는 다른 컴퓨터에선 사용할 수 없습니다.
-* **광고 수집 및 클릭**: Selenium을 통해 지정된 모든 페이지에 접속한 후 페이지 내 모든 광고 iframe을 찾아내고, 각 광고를 새로운 탭에서 자동으로 열어 클릭합니다.
-* **병렬 처리와 속도 최적화**: 다수의 광고를 효율적으로 클릭할 수 있도록 병렬 처리를 지원하며(`MaxDegreeOfParallelism` 설정) 여러 광고를 동시에 열어볼 수 있습니다. 또한 Chrome을 **헤드리스 모드**로 구동하고 `--incognito`, `--disable-images`, `--disable-css` 등의 옵션을 사용하여 이미지, CSS, 폰트 로딩을 비활성화함으로써 불필요한 자원 소모를 줄이고 속도를 향상시켰습니다.
-* **설정 가능**: `Settings.json` 설정 파일을 통해 병렬 클릭 수, 광고 로딩 타임아웃(`IframeTimeoutSeconds`), 재시도 횟수(`RetryCount`), 클릭 간 딜레이(`ClickDelayMilliseconds`), 이미지/스타일/폰트 비활성화 여부 등을 조정할 수 있습니다. 각 페이지별로 대상 URL을 목록(`TargetUrls`)에 지정할 수 있어 여러 페이지의 광고를 순차 또는 동시 처리가 가능합니다.
-* **실시간 진행률 표시 및 로깅**: 콘솔 화면에 각 대상 페이지별 진행 상태(대기/수집 중/클릭 중/완료), 발견된 광고 수와 클릭 완료 수, 오류 발생 횟수 등을 실시간으로 표 형태로 표시해줍니다. 중간에 **Ctrl+C**를 눌러 언제든 안전하게 작업을 종료할 수 있으며, 종료 시 전체 소요 시간을 표시합니다.
+- 자동 로그인/보안 저장: 최초 1회 계정 정보를 입력하면 로컬에 암호화 저장하고 이후 자동 로그인.
+- 수집-클릭 파이프라인: 광고 링크 수집과 클릭을 동시에 진행. 부모 URL 수가 워커 수보다 적으면 남는 워커가 즉시 클릭 작업으로 전환.
+- 병렬 처리/최적화: `MaxDegreeOfParallelism` 만큼 동시 처리. Headless 구동과 이미지/CSS/폰트 차단 등으로 리소스 절약.
+- 엔진 선택: `BrowserType` 설정으로 `Selenium` 또는 `Playwright` 선택 가능.
+- 실시간 진행률/로깅: URL 별 상태, 총 광고 수, 클릭 완료 수, 대기 클릭 수, 오류, 동작 스레드 수를 표 형태로 표시.
 
 ## 설치 및 실행 방법
 
-1. **사전 준비:** Windows 환경에서 Google Chrome이 설치되어 있어야 합니다. .NET 6 이상 (.NET Desktop Runtime 또는 SDK)가 필요합니다.
-2. **프로그램 받기:** 소스 코드를 클론하여 직접 빌드하거나, [Releases](https://github.com/Ayumudayo/InvenAdClicker/releases)에서 다운로드 합니다.
+1. 사전 준비
+   - Windows + Google Chrome 설치.
+   - .NET 8 LTS(Desktop Runtime 또는 SDK) 권장.
+2. 소스/바이너리 확보
+   - 소스 빌드: `dotnet restore && dotnet build -c Release`
+   - Playwright 사용 시 최초 1회: `pwsh -c "playwright install"` 또는 `npx playwright install`
+3. 설정 파일 편집(`appsettings.json`)
 
-   * 소스에서 빌드하는 경우 NuGet 패키지 복원 후 빌드할 수 있습니다.
-   * 배포 ZIP을 받은 경우: 압축을 풀면 폴더 내에 `InvenAdClicker.exe`, `Settings.json` (초기 실행 시 생성) 등이 들어 있습니다. 해당 폴더 `exe`파일을 실행하면 됩니다.
-3. **최초 실행 및 설정:** 프로그램을 처음 실행하면 설정 파일이 없으므로 자동으로 기본 설정을 담은 **`Settings.json`** 파일을 생성하고 즉시 종료됩니다. 콘솔에는 아래와 같은 안내가 출력됩니다:
-
-   ```console
-   C:\InvenAdClicker> InvenAdClicker.exe  
-   Settings.json 파일이 생성되었습니다. 설정을 완료 후 재실행해주세요.  
-   ```
-
-   파일 `Settings.json`을 열어 **설정을 원하는 대로 수정합니다**. 기본 설정은 다음과 같습니다:
+   아래는 기본 예시입니다(`AppSettings` 섹션을 편집).
 
    ```json
    {
-     "MaxDegreeOfParallelism": 4,
-     "IframeTimeoutSeconds": 5,
-     "RetryCount": 1,
-     "ClickDelayMilliseconds": 500,
-     "DisableImages": true,
-     "DisableCss": true,
-     "DisableFonts": true,
-     "TargetUrls": [
-       "https://www.inven.co.kr/"
-     ]
+     "AppSettings": {
+       "MaxDegreeOfParallelism": 3,
+       "IframeTimeoutSeconds": 5,
+       "RetryCount": 1,
+       "ClickDelayMilliseconds": 300,
+       "PageLoadTimeoutMilliseconds": 3000,
+       "CommandTimeoutMilliSeconds": 10000,
+       "CollectionAttempts": 1,
+       "DisableImages": true,
+       "DisableCss": true,
+       "DisableFonts": true,
+       "TargetUrls": [
+         "https://www.inven.co.kr/"
+       ],
+       "BrowserType": "Selenium" // 또는 "Playwright"
+     }
    }
    ```
 
-   * **TargetUrls**: 광고를 클릭할 대상 페이지 URL 목록입니다. 기본값은 인벤 메인 페이지 한 곳이며, 필요에 따라 여러 URL을 배열 형태로 추가할 수 있습니다.
-   * **기타 설정**: 병렬화 정도나 딜레이 시간 등은 환경에 맞게 조절하세요 (값을 너무 낮추면 차단 위험이 존재하며 제대로 동작하지 않을 수 있으므로 기본값 권장).
-4. **프로그램 실행:** 설정을 완료했다면 다시 프로그램을 실행합니다. 실행 후 첫 번째로 **인벤 계정 자격 증명**(ID와 비밀번호)을 입력하라는 프롬프트가 나타납니다. 콘솔에 출력되는 `ID:`와 `Password:`에 따라 각각 본인의 인벤 아이디와 비밀번호를 입력하면, 프로그램이 이를 암호화하여 `credentials.dat` 파일로 저장합니다. 예시 콘솔 입출력:
+   - TargetUrls: 처리할 부모 URL 목록.
+   - BrowserType: `Selenium` / `Playwright` 중 선택.
+   - CollectionAttempts: 같은 페이지에서 수집 반복 횟수(배너 회전 대응).
+   - PageLoadTimeoutMilliseconds / CommandTimeoutMilliSeconds: 페이지/커맨드 타임아웃.
+   - DisableImages/Css/Fonts: 불필요 리소스 차단.
 
-   ```console
-   C:\InvenAdClicker> InvenAdClicker.exe  
-   ID: (인벤 아이디 입력)  
-   Password: (비밀번호 입력)  
-   자격증명 저장 완료.  
-   계정 유효성 검증 중...  
-   계정 유효성 검증 성공  
-   ```
+4. 실행
+   - `dotnet run -c Release`
+   - 최초 실행 시 콘솔에서 인벤 ID/Password를 입력하면 로컬에 암호화 저장됩니다. 이후 자동 로그인으로 진행됩니다.
 
-   이제 프로그램이 백그라운드에서 로그인을 수행한 후, `Settings.json`에 지정된 각 페이지를 순회하며 광고 링크 수집 및 클릭 작업을 시작합니다. 진행 상황은 실시간으로 콘솔 표에 표시됩니다. 
-5. **종료:** 프로그램은 모든 클릭을 수행할 때 까지 계속 실행됩니다. 수동으로로 중단하고 싶다면 콘솔 창에서 \*\*`Ctrl + C`\*\*를 눌러 종료할 수 있습니다. 정상적으로 중단하면 그동안의 로그를 정리하고 **총 실행 시간**을 표시한 뒤 프로그램이 종료됩니다.
+5. 종료
+   - 모든 작업 완료 시 총 실행 시간이 표시되며 종료 대기 메시지가 출력됩니다.
+   - 수동 종료: `Ctrl + C`.
 
 ## 사용 예시
 
-* **단일 페이지 광고 클릭:** 기본 설정 그대로 인벤 메인 페이지(`https://www.inven.co.kr/`)를 대상으로 실행하면, 해당 페이지의 모든 배너 광고를 클릭합니다. 예를 들어 메인 페이지에 5개의 광고가 있다면, 프로그램은 5개의 광고를 새 탭으로 열고 즉시 닫은 뒤 페이지를 새로고침하고, 새로운 광고(또는 랜덤 노출되는 광고)가 있으면 다시 클릭하는 식으로 계속 진행합니다.
-* **다중 페이지 동시 처리:** 만약 TargetUrls에 여러 개의 인벤 페이지 URL을 넣으면, 각 페이지별로 광고 클릭 작업을 병렬 또는 순차적으로 처리합니다.
-* **Settings 조정 예시:** 하루에 클릭해야 하는 광고 수량이 정해져 있어 과도한 반복이 불필요한 경우, `RetryCount`나 프로그램 수동 종료 등을 통해 일정 횟수만 수행하도록 제어할 수 있습니다. 예를 들어 `RetryCount = 1`로 설정하면 광고 로딩 실패 시 한 번만 재시도하고, 그 이상 실패한 광고는 건너뜁니다. `ClickDelayMilliseconds`를 늘리면 각 광고 클릭 사이에 대기 시간을 늘려 보다 안전하게 진행할 수 있습니다.
+- 파이프라인 동작: 부모 URL이 10개이고 워커가 3개라면, 8개 수집 완료 후 남은 2개의 수집은 2개 워커가 담당하고, 남는 1개 워커는 수집된 광고를 즉시 클릭.
+- 안정성 조정: `RetryCount`, `ClickDelayMilliseconds`, 페이지/커맨드 타임아웃으로 차단 위험과 성능 균형 조절.
+- 엔진 전환: `BrowserType`만 바꿔 Selenium ↔ Playwright 전환.
 
-> **주의:** 자동화된 대량 클릭으로 인한 과도한 트래픽은 **CDN이나 서버 보안 시스템에 의해 비정상 활동으로 인지**될 수 있습니다. 실제로 [이렇게](https://u-bvm.tistory.com/92) IP 평판이 하락될 수도 있습니다. 너무 짧은 딜레이로 빈번하게 실행하지 말고, **충분한 대기 시간과 적절한 반복 횟수**를 설정하여 인벤 서버에 무리를 주지 않도록 주의하세요.
+## 주의 사항
+
+과도한 자동화 트래픽은 서버/네트워크 보안에서 비정상으로 인지될 수 있습니다. 충분한 딜레이와 적절한 반복 횟수를 사용하고, 장시간 연속 실행을 지양하세요.
 
 ## 라이선스
 
-이 프로젝트는 **MIT 라이선스** 하에 배포됩니다. 자세한 내용은 저장소의 [LICENSE](https://github.com/Ayumudayo/InvenAdClicker/blob/main/LICENSE) 파일을 참고하세요.
+본 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 저장소의 `LICENSE`를 참고하세요.
