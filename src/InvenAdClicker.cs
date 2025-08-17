@@ -63,12 +63,14 @@ namespace InvenAdClicker
                 if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
                 {
                     var playwright = await Playwright.CreateAsync();
-                    var browser = await PlaywrightWebBrowser.CreateAsync(playwright, settings, logger, encryption);
+                    var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+                    var browserPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
+                    await browserPool.InitializePoolAsync(cts.Token);
+
+                    collector = new PlaywrightAdCollector(settings, logger, browserPool, progress);
+                    clicker = new PlaywrightAdClicker(settings, logger, browserPool, progress);
                     
-                    collector = new PlaywrightAdCollector(settings, logger, browser, progress);
-                    clicker = new PlaywrightAdClicker(settings, logger, browser, progress);
-                    
-                    asyncDisposableResource = browser;
+                    asyncDisposableResource = browserPool;
                     disposableResource = playwright;
                 }
                 else // Default to Selenium
