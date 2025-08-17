@@ -13,5 +13,6 @@ namespace InvenAdClicker.Models
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;
         public string[]? TargetUrls { get; set; }
+        public string BrowserType { get; set; } = "Selenium"; // "Selenium" or "Playwright"
     }
 }

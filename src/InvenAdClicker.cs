@@ -11,6 +11,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using CustomLogger = InvenAdClicker.Utils.ILogger;
 using Log4Net = InvenAdClicker.Utils.Log4NetLogger;
+using Microsoft.Playwright;
+using InvenAdClicker.Services.Playwright;
 
 namespace InvenAdClicker
 {
@@ -39,11 +41,6 @@ namespace InvenAdClicker
                     services.AddSingleton<CustomLogger, Log4Net>();
                     services.AddSingleton<Encryption>();
                     services.AddSingleton(provider => ProgressTracker.Instance);
-
-                    services.AddSingleton<BrowserPool>();
-
-                    services.AddSingleton<IAdCollector, SeleniumAdCollector>();
-                    services.AddSingleton<IAdClicker, SeleniumAdClicker>();
                 })
                 .Build();
 
@@ -51,25 +48,44 @@ namespace InvenAdClicker
             var settings = host.Services.GetRequiredService<AppSettings>();
             var encryption = host.Services.GetRequiredService<Encryption>();
             var progress = host.Services.GetRequiredService<ProgressTracker>();
-            var browserPool = host.Services.GetRequiredService<BrowserPool>();
-            var collector = host.Services.GetRequiredService<IAdCollector>();
-            var clicker = host.Services.GetRequiredService<IAdClicker>();
 
             progress.Initialize(settings.TargetUrls ?? Array.Empty<string>());
 
+            IAdCollector collector;
+            IAdClicker clicker;
+            IDisposable? disposableResource = null;
+            IAsyncDisposable? asyncDisposableResource = null;
+
             try
             {
-                Console.WriteLine("계정 유효성 검증 중...");
-                encryption.LoadAndValidateCredentials(out var id, out var pw);
+                Console.WriteLine("계정 유효성 검증 및 브라우저 서비스 초기화 중...");
 
-                // 로그인 테스트용 브라우저 생성
-                using (var testBrowser = await browserPool.AcquireAsync(cts.Token))
+                if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine("계정 유효성 검증 성공");
-                    testBrowser.Dispose(); // 로그인 테스트용 브라우저는 사용 후 즉시 해제
-                    browserPool.Release(null);
+                    var playwright = await Playwright.CreateAsync();
+                    var browser = await PlaywrightWebBrowser.CreateAsync(playwright, settings, logger, encryption);
+                    
+                    collector = new PlaywrightAdCollector(settings, logger, browser, progress);
+                    clicker = new PlaywrightAdClicker(settings, logger, browser, progress);
+                    
+                    asyncDisposableResource = browser;
+                    disposableResource = playwright;
                 }
+                else // Default to Selenium
+                {
+                    var browserPool = new BrowserPool(settings, logger, encryption);
+                    // Initialize the pool and validate credentials by acquiring and releasing a browser.
+                    using (var testBrowser = await browserPool.AcquireAsync(cts.Token)) { 
+                        browserPool.Release(testBrowser);
+                    }
+                    
+                    collector = new SeleniumAdCollector(settings, logger, browserPool, progress);
+                    clicker = new SeleniumAdClicker(settings, logger, browserPool, progress);
 
+                    disposableResource = browserPool;
+                }
+                
+                Console.WriteLine("초기화 성공.");
                 Thread.Sleep(1000);
 
                 Console.CursorVisible = false;
@@ -108,7 +124,15 @@ namespace InvenAdClicker
                 progress.StopProgress();
 
                 // 리소스 정리
-                browserPool.Dispose();
+                if (disposableResource != null)
+                {
+                    disposableResource.Dispose();
+                }
+                if (asyncDisposableResource != null)
+                {
+                    await asyncDisposableResource.DisposeAsync();
+                }
+
                 await host.StopAsync();
 
                 stopwatch.Stop();
