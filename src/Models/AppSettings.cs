@@ -6,9 +6,10 @@ namespace InvenAdClicker.Models
         public int IframeTimeoutSeconds { get; set; } = 5;
         public int RetryCount { get; set; } = 1;
         public int ClickDelayMilliseconds { get; set; } = 300;
-        public int PageLoadTimeoutMilliseconds { get; set; } = 3000;
+        public int PageLoadTimeoutMilliseconds { get; set; } = 10000;
         public int CommandTimeoutMilliSeconds { get; set; } = 10000;
         public int CollectionAttempts { get; set; } = 1;
+        public int MaxClickAttempts { get; set; } = 2;
         public bool DisableImages { get; set; } = true;
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;

@@ -14,6 +14,8 @@ using Log4Net = InvenAdClicker.Utils.Log4NetLogger;
 using Microsoft.Playwright;
 using InvenAdClicker.Services.Playwright;
 using InvenAdClicker.Services.Selenium;
+using System.IO;
+using System.Text.Json.Nodes;
 
 namespace InvenAdClicker
 {
@@ -42,6 +44,8 @@ namespace InvenAdClicker
                     services.AddSingleton<CustomLogger, Log4Net>();
                     services.AddSingleton<Encryption>();
                     services.AddSingleton(provider => ProgressTracker.Instance);
+                    services.AddSingleton<SettingsManager>();
+                    services.AddSingleton<PlaywrightAdCollector>();
                 })
                 .Build();
 
@@ -49,6 +53,9 @@ namespace InvenAdClicker
             var settings = host.Services.GetRequiredService<AppSettings>();
             var encryption = host.Services.GetRequiredService<Encryption>();
             var progress = host.Services.GetRequiredService<ProgressTracker>();
+            var settingsManager = host.Services.GetRequiredService<SettingsManager>();
+
+            settingsManager.ValidateAndUpdateSettings();
 
             progress.Initialize(settings.TargetUrls ?? Array.Empty<string>());
 
@@ -68,6 +75,12 @@ namespace InvenAdClicker
                     var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
                     await playwrightPool.InitializePoolAsync(cts.Token);
 
+                    var adCollector = host.Services.GetRequiredService<PlaywrightAdCollector>();
+                    var adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
+                    var runner = new PlaywrightPipelineRunner(settings, logger, playwrightPool, progress, adCollector, adClicker);
+                    
+                    await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
+
                     // 비동기 자원: Pool 먼저 정리, 그 다음 Runtime 정리
                     asyncResourceA = playwrightPool;
                     playwrightRuntime = playwright;
@@ -81,6 +94,8 @@ namespace InvenAdClicker
                     }
 
                     disposableResource = browserPool;
+                    var runner = new SeleniumPipelineRunner(settings, logger, (BrowserPool)disposableResource!, progress);
+                    await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
                 }
                 
                 Console.WriteLine("초기화 성공.");
@@ -89,18 +104,6 @@ namespace InvenAdClicker
                 Console.CursorVisible = false;
                 Console.Clear();
                 var progressTask = Task.Run(() => progress.PrintProgress(), CancellationToken.None);
-
-                // 파이프라인 실행: 남는 워커는 즉시 클릭 작업으로 전환
-                if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
-                {
-                    var runner = new PlaywrightPipelineRunner(settings, logger, (PlaywrightBrowserPool)asyncResourceA!, progress);
-                    await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
-                }
-                else
-                {
-                    var runner = new SeleniumPipelineRunner(settings, logger, (BrowserPool)disposableResource!, progress);
-                    await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
-                }
 
                 // 모든 작업 완료 후 진행 상황 출력 중지
                 progress.StopProgress();
