@@ -68,6 +68,8 @@ namespace InvenAdClicker
             {
                 Console.WriteLine("계정 유효성 검증 및 브라우저 서비스 초기화 중...");
 
+                Func<Task> runnerTaskFactory;
+
                 if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
                 {
                     var playwright = await Playwright.CreateAsync();
@@ -75,35 +77,37 @@ namespace InvenAdClicker
                     var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
                     await playwrightPool.InitializePoolAsync(cts.Token);
 
-                    var adCollector = host.Services.GetRequiredService<PlaywrightAdCollector>();
-                    var adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
-                    var runner = new PlaywrightPipelineRunner(settings, logger, playwrightPool, progress, adCollector, adClicker);
-                    
-                    await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
-
-                    // 비동기 자원: Pool 먼저 정리, 그 다음 Runtime 정리
                     asyncResourceA = playwrightPool;
                     playwrightRuntime = playwright;
+
+                    runnerTaskFactory = () => {
+                        var adCollector = host.Services.GetRequiredService<PlaywrightAdCollector>();
+                        var adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
+                        var runner = new PlaywrightPipelineRunner(settings, logger, playwrightPool, progress, adCollector, adClicker);
+                        return runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
+                    };
                 }
                 else // Default to Selenium
                 {
                     var browserPool = new BrowserPool(settings, logger, encryption);
-                    // Initialize the pool and validate credentials by acquiring and releasing a browser.
-                    using (var testBrowser = await browserPool.AcquireAsync(cts.Token)) { 
-                        browserPool.Release(testBrowser);
-                    }
-
+                    await browserPool.InitializePoolAsync(cts.Token);
                     disposableResource = browserPool;
-                    var runner = new SeleniumPipelineRunner(settings, logger, (BrowserPool)disposableResource!, progress);
-                    await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
+
+                    runnerTaskFactory = () => {
+                        var runner = new SeleniumPipelineRunner(settings, logger, browserPool, progress);
+                        return runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
+                    };
                 }
                 
-                Console.WriteLine("초기화 성공.");
-                Thread.Sleep(1000);
+                Console.WriteLine("초기화 성공. 프로세스를 시작합니다...");
+                Thread.Sleep(1000); // Optional: give user time to read the message
 
                 Console.CursorVisible = false;
                 Console.Clear();
                 var progressTask = Task.Run(() => progress.PrintProgress(), CancellationToken.None);
+
+                // Run the selected pipeline
+                await runnerTaskFactory();
 
                 // 모든 작업 완료 후 진행 상황 출력 중지
                 progress.StopProgress();
@@ -132,6 +136,9 @@ namespace InvenAdClicker
             {
                 progress.StopProgress();
 
+                Console.WriteLine(); // Ensure we start on a new line.
+                Console.CursorVisible = true;
+
                 // 리소스 정리
                 // Playwright의 경우: Pool -> Runtime 순서로 DisposeAsync
                 if (asyncResourceA != null)
@@ -149,8 +156,6 @@ namespace InvenAdClicker
                 int minutes = (int)stopwatch.Elapsed.TotalMinutes;
                 int seconds = stopwatch.Elapsed.Seconds;
 
-
-                Console.CursorVisible = true;
                 Console.WriteLine($"총 실행 시간: {minutes}분 {seconds}초");
                 Console.WriteLine("작업 완료. 리소스 정리 중...");
 

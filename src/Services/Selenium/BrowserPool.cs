@@ -18,6 +18,7 @@ public class BrowserPool : IDisposable
     private readonly int _maxInstances;
     private int _createdInstances;
     private bool _disposed;
+    private bool _isInitialized = false;
 
     public BrowserPool(AppSettings settings, ILogger logger, Encryption encryption)
     {
@@ -27,17 +28,31 @@ public class BrowserPool : IDisposable
         _maxInstances = settings.MaxDegreeOfParallelism;
         _availableBrowsers = new ConcurrentQueue<SeleniumWebBrowser>();
         _semaphore = new SemaphoreSlim(_maxInstances, _maxInstances);
+    }
 
-        Console.WriteLine("Browser Pool 생성 중...");
-        // 미리 브라우저 인스턴스 생성
-        // 추가 1개 인스턴스는 계정 정보 체크용 브라우저로 소비
-        for (int i = 0; i < _maxInstances + 1; i++)
+    public async Task InitializePoolAsync(CancellationToken cancellationToken = default)
+    {
+        if (_isInitialized) return;
+
+        _logger.Info("Initializing Selenium Browser Pool...");
+        var initialTasks = new Task[_maxInstances];
+        for (int i = 0; i < _maxInstances; i++)
         {
-            var browser = CreateNewBrowser();
-            browser.SetInstanceId((short)(_createdInstances));
-            _availableBrowsers.Enqueue(browser);
+            initialTasks[i] = CreateAndPoolBrowserAsync(cancellationToken);
         }
-        Console.WriteLine("Browser Pool 생성 완료");
+        await Task.WhenAll(initialTasks);
+        _isInitialized = true;
+        _logger.Info($"Selenium Browser Pool initialized with {_availableBrowsers.Count} browser instances.");
+    }
+
+    private async Task CreateAndPoolBrowserAsync(CancellationToken cancellationToken)
+    {
+        var browser = new SeleniumWebBrowser(_settings, _logger, _encryption);
+        await browser.LoginAsync(cancellationToken);
+        Interlocked.Increment(ref _createdInstances);
+        browser.SetInstanceId((short)_createdInstances);
+        lock (_allBrowsers) { _allBrowsers.Add(browser); }
+        _availableBrowsers.Enqueue(browser);
     }
 
     public async Task<SeleniumWebBrowser> AcquireAsync(CancellationToken cancellationToken = default)
