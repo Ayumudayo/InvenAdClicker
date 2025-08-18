@@ -23,11 +23,14 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        public void Error(string msg, Exception ex)
+        public void Error(string msg, Exception? ex = null)
         {
             lock (ConsoleLocker.Lock)
             {
-                _log.Error(msg, ex);
+                if (ex is null)
+                    _log.Error(msg);
+                else
+                    _log.Error(msg, ex);
             }
         }
 

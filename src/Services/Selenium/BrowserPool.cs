@@ -72,7 +72,9 @@ public class BrowserPool : IDisposable
             }
         }
 
-        return CreateNewBrowser();
+        var newBrowser = CreateNewBrowser();
+        await newBrowser.LoginAsync(cancellationToken);
+        return newBrowser;
     }
 
     public void Release(SeleniumWebBrowser? browser)
@@ -108,6 +110,7 @@ public class BrowserPool : IDisposable
     {
         var browser = new SeleniumWebBrowser(_settings, _logger, _encryption);
         Interlocked.Increment(ref _createdInstances);
+        browser.SetInstanceId((short)_createdInstances);
         lock (_allBrowsers) { _allBrowsers.Add(browser); }
         _logger.Info($"Creating new browser instance #{_allBrowsers.Count}");
         return browser;

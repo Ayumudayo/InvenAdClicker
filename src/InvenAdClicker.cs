@@ -14,8 +14,6 @@ using Log4Net = InvenAdClicker.Utils.Log4NetLogger;
 using Microsoft.Playwright;
 using InvenAdClicker.Services.Playwright;
 using InvenAdClicker.Services.Selenium;
-using System.IO;
-using System.Text.Json.Nodes;
 
 namespace InvenAdClicker
 {

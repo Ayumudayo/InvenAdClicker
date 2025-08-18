@@ -55,12 +55,6 @@
 		</AssemblyAttribute>
 	</ItemGroup>
 
-	<ItemGroup>
-	  <EditorConfigFiles Remove="E:\USB 백업\250510\Repo\InvenAdClicker\.editorconfig" />
-	</ItemGroup>
 
-	<ItemGroup>
-	  <None Include="E:\USB 백업\250510\Repo\InvenAdClicker\.editorconfig" />
-	</ItemGroup>
 
 </Project>
