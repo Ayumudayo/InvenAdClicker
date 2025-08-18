@@ -1,4 +1,4 @@
-name: .NET
+name: CI
 
 on:
   pull_request:
@@ -58,56 +58,3 @@ jobs:
           path: |
             **/bin/**/*
             **/obj/**/*
-
-
-  release:
-    needs: build
-    runs-on: windows-latest
-    if: |
-      (
-        github.event_name == 'pull_request' &&
-        github.event.action == 'closed' &&
-        github.event.pull_request.merged == true &&
-        github.event.pull_request.base.ref == 'main'
-      )
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-output
-
-      - name: Publish
-        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish
-
-      - name: Copy README and LICENSE into publish folder
-        run: |
-          copy README.md .\publish\README.md
-          copy LICENSE .\publish\LICENSE
-
-      - name: Zip Release
-        uses: thedoctor0/zip-release@0.7.6
-        with:
-          filename: InvenAdClicker.zip
-          directory: ./publish
-
-      - name: Bump version and push tag
-        id: tag_version
-        uses: mathieudutour/github-tag-action@v6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
-
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.tag_version.outputs.new_tag }}
-          name: Release ${{ steps.tag_version.outputs.new_tag }}
-          artifacts: "./publish/InvenAdClicker.zip"
