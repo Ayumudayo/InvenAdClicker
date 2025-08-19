@@ -29,7 +29,7 @@ namespace InvenAdClicker.Services.Playwright
                 {
                     await page.GotoAsync(link, new PageGotoOptions
                     {
-                        WaitUntil = WaitUntilState.Load,
+                        WaitUntil = WaitUntilState.DOMContentLoaded,
                         Timeout = _settings.PageLoadTimeoutMilliseconds
                     });
                     await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
