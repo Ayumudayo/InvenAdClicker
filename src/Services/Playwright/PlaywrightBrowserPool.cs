@@ -1,5 +1,5 @@
-
 using InvenAdClicker.Models;
+using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Utils;
 using Microsoft.Playwright;
 using System;
@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace InvenAdClicker.Services.Playwright
 {
-    public class PlaywrightBrowserPool : IAsyncDisposable
+    public class PlaywrightBrowserPool : IBrowserPool<IPage>
     {
         private readonly AppSettings _settings;
         private readonly ILogger _logger;
@@ -40,6 +40,7 @@ namespace InvenAdClicker.Services.Playwright
             _logger.Info($"Playwright Browser Pool initialized with {_pool.Count} browser pages.");
         }
 
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private async Task<IPage> CreatePageAsync(CancellationToken cancellationToken)
         {
             var context = await _browser.NewContextAsync(new BrowserNewContextOptions
@@ -87,6 +88,7 @@ namespace InvenAdClicker.Services.Playwright
             return page;
         }
 
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private async Task CreateAndPoolPageAsync(CancellationToken cancellationToken)
         {
             await _semaphore.WaitAsync(cancellationToken);
@@ -171,7 +173,10 @@ namespace InvenAdClicker.Services.Playwright
             }
         }
 
+        #pragma warning disable CA1416
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private async Task LoginAsync(IPage page)
+#pragma warning restore CA1416
         {
             const int maxLoginAttempts = 3;
             const int retryDelayMilliseconds = 2000;
@@ -223,6 +228,11 @@ namespace InvenAdClicker.Services.Playwright
         public async ValueTask DisposeAsync()
         {
             await _browser.CloseAsync();
+        }
+
+        public void Dispose()
+        {
+            DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
     }
 }

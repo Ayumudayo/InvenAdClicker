@@ -1,17 +1,18 @@
 using System;
 using System.IO;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace InvenAdClicker.Utils
 {
-    public class Encryption : IDisposable
+    public class Encryption
     {
         private const string CredentialFile = "credentials.dat";
-        private bool _disposed;
 
         // 저장된 자격증명을 로드
         // 저장된 파일이 없거나 복호화에 실패하면 Console 입력을 통해 새로 받고 저장
+        [SupportedOSPlatform("windows")]
         public void LoadAndValidateCredentials(out string id, out string pw)
         {
             if (!TryLoadCredentials(out id, out pw))
@@ -26,6 +27,7 @@ namespace InvenAdClicker.Utils
         }
 
         // Console에서 ID/PW를 입력받아 암호화하여 저장
+        [SupportedOSPlatform("windows")]
         public bool EnterCredentials()
         {
             try
@@ -49,6 +51,7 @@ namespace InvenAdClicker.Utils
 
         // 읽어 복호화 후 ID/PW를 분리 반환
         // 파일이 없거나 포맷이 잘못됐거나 복호화 실패 시 false 반환
+        [SupportedOSPlatform("windows")]
         private bool TryLoadCredentials(out string id, out string pw)
         {
             id = pw = string.Empty;
@@ -79,6 +82,7 @@ namespace InvenAdClicker.Utils
         }
 
         /// 평문 문자열을 암호화하여 파일에 저장
+        [SupportedOSPlatform("windows")]
         private void SaveCredentials(string id, string pw)
         {
             string txt = $"{id}:{pw}";
@@ -110,21 +114,6 @@ namespace InvenAdClicker.Utils
             }
             Console.WriteLine();
             return sb.ToString();
-        }
-
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!_disposed)
-            {
-                _disposed = true;
-            }
-        }
-
-        public void Dispose()
-        {
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
         }
     }
 }

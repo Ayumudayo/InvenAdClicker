@@ -1,4 +1,5 @@
 using InvenAdClicker.Models;
+using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using System;
@@ -7,7 +8,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-public class BrowserPool : IDisposable
+public class BrowserPool : IBrowserPool<SeleniumWebBrowser>
 {
     private readonly List<SeleniumWebBrowser> _allBrowsers = new();
     private readonly ConcurrentQueue<SeleniumWebBrowser> _availableBrowsers;
@@ -45,7 +46,10 @@ public class BrowserPool : IDisposable
         _logger.Info($"Selenium Browser Pool initialized with {_availableBrowsers.Count} browser instances.");
     }
 
+    #pragma warning disable CA1416
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private async Task CreateAndPoolBrowserAsync(CancellationToken cancellationToken)
+#pragma warning restore CA1416
     {
         var browser = new SeleniumWebBrowser(_settings, _logger, _encryption);
         await browser.LoginAsync(cancellationToken);
@@ -72,8 +76,7 @@ public class BrowserPool : IDisposable
             }
         }
 
-        var newBrowser = CreateNewBrowser();
-        await newBrowser.LoginAsync(cancellationToken);
+        var newBrowser = await CreateNewBrowserAsync(cancellationToken);
         return newBrowser;
     }
 
@@ -106,9 +109,24 @@ public class BrowserPool : IDisposable
         }
     }
 
-    private SeleniumWebBrowser CreateNewBrowser()
+    public async Task<SeleniumWebBrowser> RenewAsync(SeleniumWebBrowser oldBrowser, CancellationToken cancellationToken = default)
+    {
+        _logger.Info("Renewing a Selenium browser.");
+        if (oldBrowser != null)
+        {
+            oldBrowser.Dispose();
+        }
+
+        return await CreateNewBrowserAsync(cancellationToken);
+    }
+
+    #pragma warning disable CA1416
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private async Task<SeleniumWebBrowser> CreateNewBrowserAsync(CancellationToken cancellationToken)
+#pragma warning restore CA1416
     {
         var browser = new SeleniumWebBrowser(_settings, _logger, _encryption);
+        await browser.LoginAsync(cancellationToken);
         Interlocked.Increment(ref _createdInstances);
         browser.SetInstanceId((short)_createdInstances);
         lock (_allBrowsers) { _allBrowsers.Add(browser); }
@@ -118,11 +136,20 @@ public class BrowserPool : IDisposable
 
     public void Dispose()
     {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
         if (_disposed) return;
         _disposed = true;
 
-        // 흐름 상 Lock이 필요한 구간에서 호출되진 않지만,
-        // 혹시 모르는 만약을 위해 Lock 사용
+        if (disposing)
+        {
+            // managed resources
+        }
+
         lock (_allBrowsers)
         {
             foreach (var browser in _allBrowsers)
@@ -141,5 +168,16 @@ public class BrowserPool : IDisposable
 
         _semaphore.Dispose();
         _logger.Info($"Browser pool disposed. Total instances created: {_createdInstances}");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // 비동기 정리 로직 (필요한 경우)
+        await Task.Run(() => Dispose(false));
+
+        GC.SuppressFinalize(this);
     }
 }

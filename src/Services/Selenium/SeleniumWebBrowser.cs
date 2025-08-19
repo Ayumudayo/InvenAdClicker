@@ -44,6 +44,7 @@ namespace InvenAdClicker.Services.Selenium
             _browserProcessId = GetProcessIdByPort(GetDebuggerPort());
         }
 
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         public async Task LoginAsync(CancellationToken cancellationToken = default)
         {
             _encryption.LoadAndValidateCredentials(out var id, out var pw);
@@ -72,11 +73,12 @@ namespace InvenAdClicker.Services.Selenium
 
         private int GetDebuggerPort()
         {
+            if (_driver == null) return -1;
             var capabilities = (Dictionary<string, object>)_driver.Capabilities["goog:chromeOptions"];
-            if (capabilities.TryGetValue("debuggerAddress", out var address))
+            if (capabilities.TryGetValue("debuggerAddress", out var address) && address != null)
             {
-                var portString = address.ToString().Split(':').Last();
-                if (int.TryParse(portString, out var port))
+                var portString = address?.ToString()?.Split(':').Last();
+                if (portString != null && int.TryParse(portString, out var port))
                 {
                     return port;
                 }

@@ -1,26 +1,28 @@
-using Microsoft.Playwright;
+
 using InvenAdClicker.Models;
+using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Utils;
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using System;
+using System.Linq;
 
-namespace InvenAdClicker.Services.Playwright
+namespace InvenAdClicker.Services.Pipeline
 {
-    public class PlaywrightPipelineRunner
+    public class GenericPipelineRunner<TPage> : IPipelineRunner where TPage : class
     {
         private readonly AppSettings _settings;
         private readonly ILogger _logger;
-        private readonly PlaywrightBrowserPool _browserPool;
+        private readonly IBrowserPool<TPage> _browserPool;
         private readonly ProgressTracker _progress;
-        private readonly PlaywrightAdCollector _adCollector;
-        private readonly PlaywrightAdClicker _adClicker;
+        private readonly IAdCollector<TPage> _adCollector;
+        private readonly IAdClicker<TPage> _adClicker;
 
-        public PlaywrightPipelineRunner(AppSettings settings, ILogger logger,
-            PlaywrightBrowserPool browserPool, ProgressTracker progress,
-            PlaywrightAdCollector adCollector, PlaywrightAdClicker adClicker)
+        public GenericPipelineRunner(AppSettings settings, ILogger logger,
+            IBrowserPool<TPage> browserPool, ProgressTracker progress,
+            IAdCollector<TPage> adCollector, IAdClicker<TPage> adClicker)
         {
             _settings = settings;
             _logger = logger;
@@ -128,7 +130,7 @@ namespace InvenAdClicker.Services.Playwright
                             }
 
                             if (!didWork)
-                            {
+                            {                                
                                 int allowedClickers = _settings.MaxDegreeOfParallelism - targetCollectors;
                                 if (allowedClickers > 0 && Volatile.Read(ref activeClickers) < allowedClickers && linkReader.TryRead(out var work))
                                 {

@@ -6,10 +6,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using InvenAdClicker.Services.Interfaces;
 
 namespace InvenAdClicker.Services.Playwright
 {
-    public class PlaywrightAdCollector
+    public class PlaywrightAdCollector : IAdCollector<IPage>
     {
         private readonly AppSettings _settings;
         private readonly ILogger _logger;

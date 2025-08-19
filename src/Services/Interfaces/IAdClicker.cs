@@ -4,10 +4,8 @@ using System.Threading.Tasks;
 
 namespace InvenAdClicker.Services.Interfaces
 {
-    public interface IAdClicker
+    public interface IAdClicker<TPage>
     {
-        Task ClickAsync(
-            Dictionary<string, IEnumerable<string>> pageToLinks,
-            CancellationToken cancellationToken = default);
+        Task<TPage> ClickAdAsync(TPage page, string link, CancellationToken cancellationToken);
     }
 }
