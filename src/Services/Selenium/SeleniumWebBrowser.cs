@@ -50,7 +50,7 @@ namespace InvenAdClicker.Services.Selenium
             _encryption.LoadAndValidateCredentials(out var id, out var pw);
             await Task.Run(() => _driver.Navigate().GoToUrl(_loginUrl), cancellationToken);
 
-            var wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(_settings.IframeTimeoutSeconds));
+            var wait = new WebDriverWait(_driver, TimeSpan.FromMilliseconds(_settings.IframeTimeoutMilliSeconds));
 
             await Task.Run(() => {
                 wait.Until(ExpectedConditions.ElementIsVisible(By.Id("user_id"))).SendKeys(id);

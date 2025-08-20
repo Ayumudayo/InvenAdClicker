@@ -42,13 +42,13 @@ namespace InvenAdClicker.Services.Playwright
                     // 광고 iframe이 DOM에 나타날 때까지 짧게 대기
                     await page.WaitForSelectorAsync("iframe", new PageWaitForSelectorOptions
                     {
-                        Timeout = _settings.IframeTimeoutSeconds * 1000
+                        Timeout = _settings.IframeTimeoutMilliSeconds
                     });
                 }
                 catch (TimeoutException)
                 {
                     // iframe이 없을 수도 있으므로 정보만 남기고 계속 진행
-                    _logger.Info($"No iframes detected (within {_settings.IframeTimeoutSeconds}s) on {url}.");
+                    _logger.Info($"No iframes detected (within {_settings.IframeTimeoutMilliSeconds}ms) on {url}.");
                 }
 
                 // DOM 스냅샷이 아닌 프레임 컬렉션을 사용해 안정적으로 순회

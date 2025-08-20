@@ -3,7 +3,7 @@ namespace InvenAdClicker.Models
     public class AppSettings
     {
         public int MaxDegreeOfParallelism { get; set; } = 3;
-        public int IframeTimeoutSeconds { get; set; } = 5;
+        public int IframeTimeoutMilliSeconds { get; set; } = 5000;
         public int RetryCount { get; set; } = 1;
         public int ClickDelayMilliseconds { get; set; } = 300;
         public int PageLoadTimeoutMilliseconds { get; set; } = 10000;
