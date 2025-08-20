@@ -127,7 +127,8 @@ namespace InvenAdClicker.Utils
             var startUtc = DateTime.UtcNow;
 
             // 화면 출력용 폭 계산: 창 너비에 맞춰 URL 열 폭을 조정
-            int baseWidth = statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+            int sepW = 1;    // URL과 Status 사이 고정 공백 1칸
+            int baseWidth = sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
             int urlW = redirected ? Math.Max(20, _map.Keys.Max(k => k.Length) + 2)
                                    : Math.Max(8, Console.WindowWidth - baseWidth);
             int tableWidth = urlW + baseWidth;
@@ -143,6 +144,7 @@ namespace InvenAdClicker.Utils
                 {
                     string header =
                         "URL".PadRight(urlW) +
+                        new string(' ', sepW) +
                         "Status".PadRight(statusW) +
                         "Iter".PadRight(8) +
                         "Ads".PadRight(8) +
@@ -171,7 +173,7 @@ namespace InvenAdClicker.Utils
                     if (!redirected)
                     {
                         // 창 크기 변경 시 폭 재계산 및 필요 시 버퍼 확장
-                        baseWidth = statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+                        baseWidth = sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
                         urlW = Math.Max(8, Console.WindowWidth - baseWidth);
                         tableWidth = urlW + baseWidth;
                         if (!isWindowsTerminal)
@@ -207,9 +209,10 @@ namespace InvenAdClicker.Utils
                             // 최종 테이블 및 요약 1회 출력
                             // 리다이렉트 시에는 전체 길이 기준으로 열 너비 확보
                             int urlWFull = Math.Max(20, _map.Keys.Max(k => k.Length) + 2);
-                            int tableWidthFull = urlWFull + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+                            int tableWidthFull = urlWFull + sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
                             Console.WriteLine(
                                 "URL".PadRight(urlWFull) +
+                                new string(' ', sepW) +
                                 "Status".PadRight(statusW) +
                                 "Iter".PadRight(8) +
                                 "Ads".PadRight(8) +
@@ -282,7 +285,7 @@ namespace InvenAdClicker.Utils
 
             string urlCell = FitWithEllipsis(url, urlW);
             string line =
-                $"{urlCell}" +
+                $"{urlCell} " +
                 $"{statusText.PadRight(statusW)}" +
                 $"{info.Iteration.ToString().PadRight(8)}" +
                 $"{info.TotalAds.ToString().PadRight(8)}" +
