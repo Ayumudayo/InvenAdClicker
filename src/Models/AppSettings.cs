@@ -6,15 +6,15 @@ namespace InvenAdClicker.Models
         public int IframeTimeoutMilliSeconds { get; set; } = 5000;
         public int RetryCount { get; set; } = 1;
         public int ClickDelayMilliseconds { get; set; } = 300;
-        public int PageLoadTimeoutMilliseconds { get; set; } = 10000;
-        public int CommandTimeoutMilliSeconds { get; set; } = 10000;
+        public int PageLoadTimeoutMilliseconds { get; set; } = 5000;
+        public int CommandTimeoutMilliSeconds { get; set; } = 5000;
         public int CollectionAttempts { get; set; } = 1;
         public int MaxClickAttempts { get; set; } = 2;
         public bool DisableImages { get; set; } = true;
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;
         public string[]? TargetUrls { get; set; }
-        public string BrowserType { get; set; } = "Selenium"; // "Selenium" or "Playwright"
+        public string BrowserType { get; set; } = "Playwright"; // "Selenium" or "Playwright"
 
         public string[]? LinkAllowListContains { get; set; }
         public string[]? FrameSrcAllowListContains { get; set; }
