@@ -129,9 +129,7 @@ namespace InvenAdClicker
                 int seconds = stopwatch.Elapsed.Seconds;
 
                 Console.WriteLine($"총 실행 시간: {minutes}분 {seconds}초");
-                Console.WriteLine("작업 완료. 리소스 정리 중...");
-
-                Console.WriteLine("정리 완료. 아무 키나 눌러 종료합니다.");
+                Console.WriteLine("작업 완료. 아무 키나 눌러 종료합니다.");
                 Console.ReadKey();
             }
         }
