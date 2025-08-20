@@ -1,6 +1,10 @@
 # InvenAdClicker
 
-인벤 광고 클릭 자동화를 위한 콘솔 프로그램입니다. 편하게 경험치 벌자구요.
+인벤 광고 클릭 자동화를 위한 콘솔 프로그램입니다.
+
+본 프로젝트는 브라우저 자동화 학습을 위해 작성되었으며, 인벤 서버에 대한 악의적 트래픽을 발생시키기 위함이 아닙니다.
+
+본 프로그램을 과도하게 사용하여 발생하는 문제에 대하여 작성자는 어떠한 책임도 지지 않습니다.
 
 ## 주요 기능
 
@@ -25,6 +29,8 @@
   npx playwright install
   ```
 
+  또는 루트 디렉토리에 있는 `playwright.ps1`를 실행해도 됩니다.
+
 ### 2. 설정 (`appsettings.json`)
 
 실행 파일 옆의 `appsettings.json` 파일을 열어 필요에 맞게 수정합니다.
@@ -33,7 +39,7 @@
 {
   "AppSettings": {
     "MaxDegreeOfParallelism": 3,
-    "IframeTimeoutSeconds": 5,
+    "IframeTimeoutMilliSeconds": 5,
     "RetryCount": 1,
     "ClickDelayMilliseconds": 300,
     "PageLoadTimeoutMilliseconds": 10000,
@@ -52,7 +58,7 @@
 ```
 - `BrowserType`: `Playwright` (권장) 또는 `Selenium` 중에서 선택합니다.
 - `TargetUrls`: 광고를 수집하고 클릭할 페이지 URL 목록입니다.
-- `MaxDegreeOfParallelism`: 동시에 실행할 작업의 수입니다. PC 사양에 맞춰 조절하세요.
+- `MaxDegreeOfParallelism`: 동시에 실행할 작업의 수입니다.
 - `ClickDelayMilliseconds`: 광고 클릭 후 대기 시간 (밀리초) 입니다.
 - `PageLoadTimeoutMilliseconds`: 페이지 로딩 대기 시간입니다. 네트워크가 불안정하면 값을 늘리세요.
 
@@ -69,7 +75,7 @@
 
 ## 주의 사항
 
-과도한 자동화 트래픽은 비정상적인 활동으로 간주될 수 있습니다. `ClickDelayMilliseconds` 와 `MaxDegreeOfParallelism` 설정을 적절히 조절하여 사용하시기 바랍니다.
+과도한 자동화 트래픽은 비정상적인 활동(DoS 등)으로 간주될 수 있습니다. `ClickDelayMilliseconds` 와 `MaxDegreeOfParallelism` 설정을 적절히 조절하여 단기간에 과도한 트래픽을 일으키지 않게 해야 합니다.
 
 ## 라이선스
 
