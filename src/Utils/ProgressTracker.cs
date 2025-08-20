@@ -110,7 +110,7 @@ namespace InvenAdClicker.Utils
 
                 for (int i = 0; i < urls.Count; i++)
                 {
-                    PrintProgressLine(urls[i], _map[urls[i]], urlW, statusW, false);
+                    PrintProgressLine(urls[i], _map[urls[i]], urlW, statusW);
                     Console.WriteLine();
                 }
             }
@@ -127,7 +127,7 @@ namespace InvenAdClicker.Utils
                         lock (info)
                         {
                             Console.SetCursorPosition(0, headerLines + i);
-                            PrintProgressLine(url, info, urlW, statusW, true);
+                            PrintProgressLine(url, info, urlW, statusW);
                         }
                     }
                 }
@@ -148,7 +148,7 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        private void PrintProgressLine(string url, ProgressInfo info, int urlW, int statusW, bool unused)
+        private void PrintProgressLine(string url, ProgressInfo info, int urlW, int statusW)
         {
             Console.ForegroundColor = info.Status switch
             {
