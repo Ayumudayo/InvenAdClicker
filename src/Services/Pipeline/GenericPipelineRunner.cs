@@ -95,7 +95,6 @@ namespace InvenAdClicker.Services.Pipeline
                                 Interlocked.Increment(ref activeCollectors);
                                 if (urlReader.TryRead(out var url))
                                 {
-                                    Interlocked.Decrement(ref urlsRemaining);
                                     didWork = true;
                                     try
                                     {
@@ -119,6 +118,7 @@ namespace InvenAdClicker.Services.Pipeline
                                     }
                                     finally
                                     {
+                                        Interlocked.Decrement(ref urlsRemaining);
                                         _progress.Update(url, threadDelta: -1);
                                         Interlocked.Decrement(ref activeCollectors);
                                     }
