@@ -27,7 +27,7 @@ namespace InvenAdClicker
             {
                 e.Cancel = true;
                 cts.Cancel();
-                Console.WriteLine("\nShutdown requested...");
+                Console.WriteLine("\n종료 요청을 감지했습니다. 안전하게 종료합니다...");
             };
 
             using IHost host = Host.CreateDefaultBuilder(args)
