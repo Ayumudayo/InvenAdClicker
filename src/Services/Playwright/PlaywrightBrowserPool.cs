@@ -45,7 +45,7 @@ namespace InvenAdClicker.Services.Playwright
         {
             var context = await _browser.NewContextAsync(new BrowserNewContextOptions
             {
-                ExtraHTTPHeaders = new[] { new KeyValuePair<string, string>("Accept-Language", "en-US,en;q=0.9") }
+                ExtraHTTPHeaders = new[] { new KeyValuePair<string, string>("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8") }
             });
             var page = await context.NewPageAsync();
 

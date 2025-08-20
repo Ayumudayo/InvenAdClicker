@@ -1,8 +1,6 @@
 name: CI
 
-on:
-  pull_request:
-    types: [closed]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -57,4 +55,3 @@ jobs:
           name: build-output
           path: |
             **/bin/**/*
-            **/obj/**/*

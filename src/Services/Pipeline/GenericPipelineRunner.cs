@@ -146,6 +146,15 @@ namespace InvenAdClicker.Services.Pipeline
                                     {
                                         _logger.Error($"[Clicker{workerId}] Final attempt failed for link '{work.link}' from page '{work.page}'", ex);
                                         _progress.Update(work.page, errDelta: 1);
+                                        try
+                                        {
+                                            // 클릭 실패 후 브라우저/페이지 갱신으로 회복력 향상
+                                            page = await _browserPool.RenewAsync(page, cancellationToken);
+                                        }
+                                        catch (Exception renewEx)
+                                        {
+                                            _logger.Warn($"[Clicker{workerId}] Failed to renew browser after click error: {renewEx.Message}");
+                                        }
                                     }
                                     finally
                                     {

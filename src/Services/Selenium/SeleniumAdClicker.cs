@@ -1,40 +1,41 @@
 using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
-using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-
-public class SeleniumAdClicker : IAdClicker<SeleniumWebBrowser>
+namespace InvenAdClicker.Services.Selenium
 {
-    private readonly AppSettings _settings;
-    private readonly ILogger _logger;
-
-    public SeleniumAdClicker(AppSettings settings, ILogger logger)
+    public class SeleniumAdClicker : IAdClicker<SeleniumWebBrowser>
     {
-        _settings = settings;
-        _logger = logger;
-    }
+        private readonly AppSettings _settings;
+        private readonly ILogger _logger;
 
-    public async Task<SeleniumWebBrowser> ClickAdAsync(SeleniumWebBrowser browser, string link, CancellationToken cancellationToken)
-    {
-        try
+        public SeleniumAdClicker(AppSettings settings, ILogger logger)
         {
-            browser.Driver.Navigate().GoToUrl(link);
-            await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
-            return browser;
+            _settings = settings;
+            _logger = logger;
         }
-        catch (WebDriverException ex)
+
+        public async Task<SeleniumWebBrowser> ClickAdAsync(SeleniumWebBrowser browser, string link, CancellationToken cancellationToken)
         {
-            _logger.Error($"WebDriver error during click of '{link}': {ex.Message}");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Unexpected error during ClickWithBrowserAsync: {ex.Message}");
-            throw;
+            try
+            {
+                browser.Driver.Navigate().GoToUrl(link);
+                await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
+                return browser;
+            }
+            catch (WebDriverException ex)
+            {
+                _logger.Error($"WebDriver error during click of '{link}': {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Unexpected error during ClickWithBrowserAsync: {ex.Message}");
+                throw;
+            }
         }
     }
 }
