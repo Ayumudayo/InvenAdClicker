@@ -76,7 +76,7 @@ namespace InvenAdClicker.Services.Pipeline
                 workers[i] = Task.Run(async () =>
                 {
                     var page = await _browserPool.AcquireAsync(cancellationToken);
-                    _logger.Info($"PipelineWorker {workerId} started.");
+                    _logger.Info($"파이프라인 워커 {workerId} 시작");
 
                     try
                     {
@@ -113,7 +113,7 @@ namespace InvenAdClicker.Services.Pipeline
                                     }
                                     catch (Exception ex)
                                     {
-                                        _logger.Error($"[Collector{workerId}] Unhandled exception during collection for {url}: {ex.Message}", ex);
+                                        _logger.Error($"[수집기{workerId}] {url} 처리 중 처리되지 않은 예외: {ex.Message}", ex);
                                         _progress.Update(url, ProgressStatus.Error, errDelta: 1);
                                         page = await _browserPool.RenewAsync(page, cancellationToken);
                                     }
@@ -125,7 +125,7 @@ namespace InvenAdClicker.Services.Pipeline
                                 }
                                 else
                                 {
-                                    Interlocked.Decrement(ref activeCollectors); // No URL, so decrement immediately
+                                    Interlocked.Decrement(ref activeCollectors); // URL이 없으므로 즉시 감소
                                 }
                             }
 
@@ -144,7 +144,7 @@ namespace InvenAdClicker.Services.Pipeline
                                     }
                                     catch (Exception ex)
                                     {
-                                        _logger.Error($"[Clicker{workerId}] Final attempt failed for link '{work.link}' from page '{work.page}'", ex);
+                                        _logger.Error($"[클리커{workerId}] 링크 '{work.link}' (페이지 '{work.page}') 최종 시도 실패", ex);
                                         _progress.Update(work.page, errDelta: 1);
                                         try
                                         {
@@ -153,7 +153,7 @@ namespace InvenAdClicker.Services.Pipeline
                                         }
                                         catch (Exception renewEx)
                                         {
-                                            _logger.Warn($"[Clicker{workerId}] Failed to renew browser after click error: {renewEx.Message}");
+                                            _logger.Warn($"[클리커{workerId}] 클릭 오류 후 브라우저 갱신 실패: {renewEx.Message}");
                                         }
                                     }
                                     finally
@@ -181,13 +181,13 @@ namespace InvenAdClicker.Services.Pipeline
                     finally
                     {
                         _browserPool.Release(page);
-                        _logger.Info($"PipelineWorker {workerId} stopped.");
+                        _logger.Info($"파이프라인 워커 {workerId} 종료");
                     }
                 }, cancellationToken);
             }
 
             await Task.WhenAll(workers);
-            _logger.Info("Pipeline runner has completed.");
+            _logger.Info("파이프라인 실행이 완료되었습니다.");
         }
     }
 }

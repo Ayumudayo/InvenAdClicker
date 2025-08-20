@@ -27,12 +27,12 @@ namespace InvenAdClicker.Services.Selenium
             }
             catch (WebDriverException ex)
             {
-                _logger.Error($"WebDriver error during click of '{link}': {ex.Message}");
+                _logger.Error($"클릭 처리 중 WebDriver 오류('{link}'): {ex.Message}");
                 throw;
             }
             catch (Exception ex)
             {
-                _logger.Error($"Unexpected error during ClickWithBrowserAsync: {ex.Message}");
+                _logger.Error($"클릭 처리 중 예기치 못한 오류: {ex.Message}");
                 throw;
             }
         }

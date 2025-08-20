@@ -35,7 +35,7 @@ namespace InvenAdClicker.Services.Selenium
         {
             if (_isInitialized) return;
 
-            _logger.Info("Initializing Selenium Browser Pool...");
+            _logger.Info("Selenium 브라우저 풀 초기화 중...");
             var initialTasks = new Task[_maxInstances];
             for (int i = 0; i < _maxInstances; i++)
             {
@@ -43,7 +43,7 @@ namespace InvenAdClicker.Services.Selenium
             }
             await Task.WhenAll(initialTasks);
             _isInitialized = true;
-            _logger.Info($"Selenium Browser Pool initialized with {_availableBrowsers.Count} browser instances.");
+            _logger.Info($"Selenium 브라우저 풀 초기화 완료({_availableBrowsers.Count}개 인스턴스 준비됨)");
         }
 
         #pragma warning disable CA1416
@@ -111,7 +111,7 @@ namespace InvenAdClicker.Services.Selenium
 
         public async Task<SeleniumWebBrowser> RenewAsync(SeleniumWebBrowser oldBrowser, CancellationToken cancellationToken = default)
         {
-            _logger.Info("Renewing a Selenium browser.");
+            _logger.Info("Selenium 브라우저 갱신");
             if (oldBrowser != null)
             {
                 oldBrowser.Dispose();
@@ -130,7 +130,7 @@ namespace InvenAdClicker.Services.Selenium
             Interlocked.Increment(ref _createdInstances);
             browser.SetInstanceId((short)_createdInstances);
             lock (_allBrowsers) { _allBrowsers.Add(browser); }
-            _logger.Info($"Creating new browser instance #{_allBrowsers.Count}");
+            _logger.Info($"새 브라우저 인스턴스 생성 #{_allBrowsers.Count}");
             return browser;
         }
 
@@ -147,7 +147,7 @@ namespace InvenAdClicker.Services.Selenium
 
             if (disposing)
             {
-                // managed resources
+                // 관리 리소스 정리
             }
 
             lock (_allBrowsers)
@@ -160,14 +160,14 @@ namespace InvenAdClicker.Services.Selenium
                     }
                     catch (Exception ex)
                     {
-                        _logger.Warn($"Error disposing browser: {ex.Message}");
+                        _logger.Warn($"브라우저 정리 중 오류: {ex.Message}");
                     }
                 }
                 _allBrowsers.Clear();
             }
 
             _semaphore.Dispose();
-            _logger.Info($"Browser pool disposed. Total instances created: {_createdInstances}");
+            _logger.Info($"브라우저 풀 정리 완료. 총 생성 인스턴스: {_createdInstances}");
         }
 
         public async ValueTask DisposeAsync()

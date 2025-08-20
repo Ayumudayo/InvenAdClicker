@@ -61,6 +61,7 @@ namespace InvenAdClicker
 
                 IPipelineRunner runner;
 
+                // 기본값
                 if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
                 {
                     var playwright = await Playwright.CreateAsync();
@@ -72,7 +73,7 @@ namespace InvenAdClicker
                     IAdClicker<IPage> adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
                     runner = new GenericPipelineRunner<IPage>(settings, logger, playwrightPool, progress, adCollector, adClicker);
                 }
-                else // Default to Selenium
+                else
                 {
                     var browserPool = new BrowserPool(settings, logger, encryption);
                     await browserPool.InitializePoolAsync(cts.Token);
@@ -83,13 +84,13 @@ namespace InvenAdClicker
                 }
                 
                 Console.WriteLine("초기화 성공. 프로세스를 시작합니다...");
-                Thread.Sleep(1000); // Optional: give user time to read the message
+                Thread.Sleep(1000); // 안내 메시지를 읽을 시간을 잠시 부여
 
                 Console.CursorVisible = false;
                 Console.Clear();
                 var progressTask = Task.Run(() => progress.PrintProgress(), CancellationToken.None);
 
-                // Run the selected pipeline
+                // 선택된 파이프라인 실행
                 await runner.RunAsync(settings.TargetUrls ?? Array.Empty<string>(), cts.Token);
 
                 // 모든 작업 완료 후 진행 상황 출력 중지
@@ -119,7 +120,7 @@ namespace InvenAdClicker
             {
                 progress.StopProgress();
 
-                Console.WriteLine(); // Ensure we start on a new line.
+                Console.WriteLine(); // 다음 출력을 새 줄에서 시작하도록 보장
                 Console.CursorVisible = true;
 
                 await host.StopAsync();
@@ -135,4 +136,3 @@ namespace InvenAdClicker
         }
     }
 }
-

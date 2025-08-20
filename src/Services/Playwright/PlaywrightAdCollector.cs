@@ -46,8 +46,8 @@ namespace InvenAdClicker.Services.Playwright
                 }
                 catch (TimeoutException)
                 {
-                    // iframe이 없을 수도 있으므로 정보만 남기고 계속 진행
-                    _logger.Info($"No iframes detected (within {_settings.IframeTimeoutMilliSeconds}ms) on {url}.");
+                    // iframe이 없을 수도 있으므로 과도한 소음을 줄이기 위해 Debug로만 기록
+                    _logger.Debug($"{url}에서 {_settings.IframeTimeoutMilliSeconds}ms 내에 iframe 미검출");
                 }
 
                 // DOM 스냅샷이 아닌 프레임 컬렉션을 사용해 안정적으로 순회
@@ -82,7 +82,7 @@ namespace InvenAdClicker.Services.Playwright
                     }
                     catch (Exception ex)
                     {
-                        _logger.Warn($"[Collector] frame processing failed on {url}: {ex.Message}");
+                        _logger.Warn($"[수집기] {url} 프레임 처리 실패: {ex.Message}");
                     }
                 }
 

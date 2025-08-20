@@ -32,23 +32,23 @@ namespace InvenAdClicker.Services.Playwright
                         Timeout = _settings.PageLoadTimeoutMilliseconds
                     });
                     await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
-                    return page; // Success
+                    return page; // 성공
                 }
                 catch (Exception ex)
                 {
-                    _logger.Warn($"Playwright click attempt {i + 1} for '{link}' failed: {ex.Message}");
+                    _logger.Warn($"Playwright 클릭 {i + 1}회차 실패('{link}'): {ex.Message}");
                     if (i < _settings.MaxClickAttempts - 1)
                     {
                         page = await _browserPool.RenewAsync(page, cancellationToken);
                     }
                     else
                     {
-                        _logger.Error($"Final Playwright click attempt for '{link}' failed.");
+                        _logger.Error($"Playwright 최종 클릭 시도 실패('{link}')");
                         throw;
                     }
                 }
             }
-            return page; // Should not be reached
+            return page; // 여까지 오면 큰일남
         }
     }
 }

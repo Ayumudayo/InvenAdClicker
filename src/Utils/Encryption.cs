@@ -11,14 +11,14 @@ namespace InvenAdClicker.Utils
         private const string CredentialFile = "credentials.dat";
 
         // 저장된 자격증명을 로드
-        // 저장된 파일이 없거나 복호화에 실패하면 Console 입력을 통해 새로 받고 저장
+        // 저장된 파일이 없거나 복호화에 실패하면 콘솔 입력을 통해 새로 받고 저장
         [SupportedOSPlatform("windows")]
         public void LoadAndValidateCredentials(out string id, out string pw)
         {
             if (!TryLoadCredentials(out id, out pw))
             {
-                Console.WriteLine("Credentials 파일을 찾을 수 없거나 로드에 실패했습니다.");
-                Console.WriteLine("새로운 자격증명을 입력해주세요.");
+                Console.WriteLine("자격증명 파일(credentials.dat)을 찾을 수 없거나 로드에 실패했습니다.");
+                Console.WriteLine("새로운 자격증명을 입력해 주세요.");
 
                 EnterCredentials();                         // Console로부터 입력 받아 저장
                 if (!TryLoadCredentials(out id, out pw))    // 재시도
@@ -26,20 +26,20 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        // Console에서 ID/PW를 입력받아 암호화하여 저장
+        // 콘솔에서 ID/PW를 입력받아 암호화하여 저장
         [SupportedOSPlatform("windows")]
         public bool EnterCredentials()
         {
             try
             {
-                Console.Write("ID: ");
+                Console.Write("아이디: ");
                 string id = Console.ReadLine() ?? string.Empty;
 
-                Console.Write("Password: ");
+                Console.Write("비밀번호: ");
                 string pw = ReadPasswordMasked();
 
                 SaveCredentials(id, pw);
-                Console.WriteLine("자격증명 저장 완료.");
+                Console.WriteLine("자격증명 저장 완료");
                 return true;
             }
             catch (Exception ex)
@@ -93,7 +93,7 @@ namespace InvenAdClicker.Utils
             File.WriteAllBytes(CredentialFile, encrypted);
         }
 
-        // Console에 비밀번호 입력 시 마스킹 처리
+        // 콘솔에서 비밀번호 입력 시 마스킹 처리
         private static string ReadPasswordMasked()
         {
             var sb = new StringBuilder();

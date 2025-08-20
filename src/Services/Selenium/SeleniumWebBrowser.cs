@@ -66,7 +66,7 @@ namespace InvenAdClicker.Services.Selenium
             {
                 if (_driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new ApplicationException("Login failed. Please check your credentials.");
+                    throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
                 }
             }
         }
@@ -125,7 +125,7 @@ namespace InvenAdClicker.Services.Selenium
             }
             catch (Exception ex)
             {
-                _logger.Error($"Failed to get process ID by port {port}: {ex.Message}");
+                _logger.Error($"포트 {port}의 프로세스 ID를 가져오지 못했습니다: {ex.Message}");
             }
             return null;
         }
@@ -148,7 +148,7 @@ namespace InvenAdClicker.Services.Selenium
             if (_disposed) return;
             if (disposing)
             {
-                // managed resources
+                // 관리 리소스 정리
             }
 
             if (_browserProcessId.HasValue)
@@ -161,7 +161,7 @@ namespace InvenAdClicker.Services.Selenium
                         p.Kill();
                     }
                 }
-                catch { /* ignore */ }
+                catch { /* 무시 */ }
             }
 
             _driver?.Quit();

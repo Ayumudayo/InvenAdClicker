@@ -47,7 +47,7 @@ namespace InvenAdClicker.Services.Selenium
                     }
                     catch (Exception ex)
                     {
-                        _logger.Warn($"[Collector] iframe fail {url}: {ex.Message}");
+                        _logger.Warn($"[수집기] iframe 처리 실패 {url}: {ex.Message}");
                     }
                     finally
                     {

@@ -37,7 +37,7 @@ namespace InvenAdClicker.Services.Playwright
                 initialTasks[i] = CreateAndPoolPageAsync(cancellationToken);
             }
             await Task.WhenAll(initialTasks);
-            _logger.Info($"Playwright Browser Pool initialized with {_pool.Count} browser pages.");
+            _logger.Info($"Playwright 브라우저 풀 초기화 완료({_pool.Count} 페이지 준비됨)");
         }
 
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -49,18 +49,18 @@ namespace InvenAdClicker.Services.Playwright
             });
             var page = await context.NewPageAsync();
 
-            // Block unnecessary resources using a more aggressive allowlist approach
+            // 불필요한 리소스를 차단(허용 목록 기반의 적극적 필터링)
             await page.RouteAsync("**/*", async route =>
             {
                 var resourceType = route.Request.ResourceType;
                 bool shouldContinue = false;
 
-                // Core resources that are always allowed
+                // 핵심 리소스: 항상 허용
                 if (resourceType == "document" || resourceType == "script" || resourceType == "xhr" || resourceType == "fetch")
                 {
                     shouldContinue = true;
                 }
-                // Conditionally allow other resources based on settings
+                // 설정값에 따라 조건부 허용
                 else if (resourceType == "image" && !_settings.DisableImages)
                 {
                     shouldContinue = true;
@@ -111,8 +111,8 @@ namespace InvenAdClicker.Services.Playwright
                 return page;
             }
 
-            // Pool was empty, create a new page, but this path shouldn't be hit if initialized properly.
-            _logger.Warn("Playwright pool was empty. Creating a new page on-demand.");
+            // 풀에 여유분이 없으면 새 페이지를 생성(정상 초기화 시 드문 경로)
+            _logger.Warn("Playwright 풀에 여유 페이지가 없습니다. 필요 시 즉시 생성합니다.");
             return await CreatePageAsync(cancellationToken);
         }
 
@@ -125,9 +125,8 @@ namespace InvenAdClicker.Services.Playwright
             }
             else
             {
-                _logger.Warn("Released a null or closed page. Attempting to create a replacement.");
-                // The semaphore is not released here. Instead, we try to create a new page.
-                // The semaphore acts as a gate for creating new pages.
+                _logger.Warn("null 또는 종료된 페이지가 반환되었습니다. 대체 페이지를 생성합니다.");
+                // 여기서는 semaphore를 즉시 해제하지 않음. 새 페이지 생성 후 해제.
                 Task.Run(async () =>
                 {
                     try
@@ -135,12 +134,12 @@ namespace InvenAdClicker.Services.Playwright
                         var newPage = await CreatePageAsync(CancellationToken.None);
                         _pool.Add(newPage);
                         _semaphore.Release();
-                        _logger.Info("Successfully created a replacement page for the pool.");
+                        _logger.Info("풀 대체 페이지 생성 성공");
                     }
                     catch (Exception ex)
                     {
-                        _logger.Error("Failed to create a replacement page.", ex);
-                        // If creation fails, we must release the semaphore to not deadlock the pool.
+                        _logger.Error("대체 페이지 생성 실패", ex);
+                        // 생성 실패 시에는 데드락 방지를 위해 semaphore를 해제
                         _semaphore.Release();
                     }
                 });
@@ -149,25 +148,24 @@ namespace InvenAdClicker.Services.Playwright
 
         public async Task<IPage> RenewAsync(IPage oldPage, CancellationToken cancellationToken = default)
         {
-            _logger.Info("Renewing a Playwright page.");
+            _logger.Info("Playwright 페이지 갱신");
             if (oldPage != null)
             {
-                // Close the context of the old page, which also closes the page itself.
+                // 기존 페이지의 컨텍스트를 닫으면 페이지도 함께 종료됨
                 await oldPage.Context.CloseAsync();
             }
 
-            // The semaphore slot from the old page is now free.
-            // We create a new page to replace it, maintaining the pool size.
-            // No need to wait on the semaphore here as the caller already acquired a slot.
+            // 이전 페이지로 점유되던 semaphore 슬롯이 비워졌으므로
+            // 풀 크기를 유지하기 위해 새 페이지를 생성한다.
+            // 호출자가 이미 슬롯을 점유한 상태이므로 여기서 대기할 필요 없음
             try
             {
                 return await CreatePageAsync(cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.Error("Failed to create a new page during renewal.", ex);
-                // If we fail, we must release the semaphore because the caller is expecting
-                // to either have a page or be able to release one.
+                _logger.Error("갱신 중 새 페이지 생성 실패", ex);
+                // 실패 시 호출자는 페이지를 보유하거나 해제할 수 있어야 하므로 semaphore를 해제
                 _semaphore.Release();
                 throw;
             }
@@ -199,28 +197,28 @@ namespace InvenAdClicker.Services.Playwright
 
                     if (page.Url.Contains("member.inven.co.kr"))
                     {
-                        throw new ApplicationException("Login failed. Please check your credentials.");
+                        throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
                     }
 
-                    // If we reach here, login was successful
-                    _logger.Info("Login successful.");
+                    // 여기까지 도달했다면 로그인 성공
+                    _logger.Info("로그인 성공");
                     return;
                 }
                 catch (TimeoutException ex)
                 {
-                    _logger.Warn($"Login attempt {attempt} timed out.");
+                    _logger.Warn($"로그인 {attempt}회차 시간 초과");
                     if (attempt == maxLoginAttempts)
                     {
-                        _logger.Error("All login attempts have failed due to timeouts.", ex);
-                        throw new ApplicationException("Login failed after multiple attempts due to timeouts.", ex);
+                        _logger.Error("모든 로그인 시도가 시간 초과로 실패", ex);
+                        throw new ApplicationException("여러 차례의 시도 끝에 로그인에 실패했습니다(시간 초과).", ex);
                     }
                     await Task.Delay(retryDelayMilliseconds);
                 }
                 catch (Exception ex)
                 {
-                    // Catch other potential exceptions during login (e.g. page closed)
-                    _logger.Error($"An unexpected error occurred during login attempt {attempt}.", ex);
-                    throw; // Rethrow non-timeout exceptions immediately
+                    // 로그인 중 발생 가능한 기타 예외 처리(예: 페이지 종료 등)
+                    _logger.Error($"로그인 {attempt}회차 중 예기치 못한 오류", ex);
+                    throw; // 시간 초과 외 예외는 즉시 throw
                 }
             }
         }

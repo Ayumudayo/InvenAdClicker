@@ -75,7 +75,7 @@ namespace InvenAdClicker.Utils
             }
             catch (Exception ex)
             {
-                _logger.Warn($"Could not automatically update settings file: {ex.Message}");
+                _logger.Warn($"설정 파일을 자동으로 갱신하지 못했습니다: {ex.Message}");
             }
         }
     }
