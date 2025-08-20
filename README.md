@@ -39,11 +39,11 @@
 {
   "AppSettings": {
     "MaxDegreeOfParallelism": 3,
-    "IframeTimeoutMilliSeconds": 5,
+    "IframeTimeoutMilliSeconds": 5000,
     "RetryCount": 1,
     "ClickDelayMilliseconds": 300,
-    "PageLoadTimeoutMilliseconds": 10000,
-    "CommandTimeoutMilliSeconds": 10000,
+    "PageLoadTimeoutMilliseconds": 5000,
+    "CommandTimeoutMilliSeconds": 5000,
     "CollectionAttempts": 1,
     "MaxClickAttempts": 2,
     "DisableImages": true,
