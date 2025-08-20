@@ -1,5 +1,4 @@
 using InvenAdClicker.Models;
-using InvenAdClicker.Utils;
 using System;
 using System.IO;
 using System.Text.Json;
@@ -10,10 +9,10 @@ namespace InvenAdClicker.Utils
     public class SettingsManager
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
         private const string SettingsFileName = "appsettings.json";
 
-        public SettingsManager(AppSettings settings, ILogger logger)
+        public SettingsManager(AppSettings settings, IAppLogger logger)
         {
             _settings = settings;
             _logger = logger;

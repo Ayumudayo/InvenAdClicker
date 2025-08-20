@@ -1,6 +1,5 @@
 using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
-using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using System;
 using System.Threading;
@@ -10,9 +9,9 @@ namespace InvenAdClicker.Services.Selenium
     public class SeleniumAdClicker : IAdClicker<SeleniumWebBrowser>
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
 
-        public SeleniumAdClicker(AppSettings settings, ILogger logger)
+        public SeleniumAdClicker(AppSettings settings, IAppLogger logger)
         {
             _settings = settings;
             _logger = logger;

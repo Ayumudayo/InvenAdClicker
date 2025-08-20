@@ -14,13 +14,13 @@ namespace InvenAdClicker.Services.Pipeline
     public class GenericPipelineRunner<TPage> : IPipelineRunner where TPage : class
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
         private readonly IBrowserPool<TPage> _browserPool;
         private readonly ProgressTracker _progress;
         private readonly IAdCollector<TPage> _adCollector;
         private readonly IAdClicker<TPage> _adClicker;
 
-        public GenericPipelineRunner(AppSettings settings, ILogger logger,
+        public GenericPipelineRunner(AppSettings settings, IAppLogger logger,
             IBrowserPool<TPage> browserPool, ProgressTracker progress,
             IAdCollector<TPage> adCollector, IAdClicker<TPage> adClicker)
         {

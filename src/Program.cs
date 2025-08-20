@@ -9,8 +9,6 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using CustomLogger = InvenAdClicker.Utils.ILogger;
-using Log4Net = InvenAdClicker.Utils.Log4NetLogger;
 using Microsoft.Playwright;
 using InvenAdClicker.Services.Playwright;
 using InvenAdClicker.Services.Selenium;
@@ -18,7 +16,7 @@ using InvenAdClicker.Services.Pipeline;
 
 namespace InvenAdClicker
 {
-    class InvenAdClicker
+    class Program
     {
         public static async Task Main(string[] args)
         {
@@ -40,14 +38,14 @@ namespace InvenAdClicker
                         ?? throw new ApplicationException("appsettings.json 파일에서 AppSettings 섹션을 찾을 수 없거나 비어있습니다.");
                     services.AddSingleton(appSettings);
 
-                    services.AddSingleton<CustomLogger, Log4Net>();
+                    services.AddSingleton<IAppLogger, Log4NetLogger>();
                     services.AddSingleton<Encryption>();
                     services.AddSingleton(provider => ProgressTracker.Instance);
                     services.AddSingleton<SettingsManager>();
                 })
                 .Build();
 
-            var logger = host.Services.GetRequiredService<CustomLogger>();
+            var logger = host.Services.GetRequiredService<IAppLogger>();
             var settings = host.Services.GetRequiredService<AppSettings>();
             var encryption = host.Services.GetRequiredService<Encryption>();
             var progress = host.Services.GetRequiredService<ProgressTracker>();
@@ -139,3 +137,4 @@ namespace InvenAdClicker
         }
     }
 }
+

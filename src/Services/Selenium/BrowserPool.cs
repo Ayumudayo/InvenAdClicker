@@ -14,14 +14,14 @@ namespace InvenAdClicker.Services.Selenium
         private readonly ConcurrentQueue<SeleniumWebBrowser> _availableBrowsers;
         private readonly SemaphoreSlim _semaphore;
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
         private readonly Encryption _encryption;
         private readonly int _maxInstances;
         private int _createdInstances;
         private bool _disposed;
         private bool _isInitialized = false;
 
-        public BrowserPool(AppSettings settings, ILogger logger, Encryption encryption)
+        public BrowserPool(AppSettings settings, IAppLogger logger, Encryption encryption)
         {
             _settings = settings;
             _logger = logger;

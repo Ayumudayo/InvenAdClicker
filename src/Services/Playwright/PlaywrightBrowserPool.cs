@@ -13,13 +13,13 @@ namespace InvenAdClicker.Services.Playwright
     public class PlaywrightBrowserPool : IBrowserPool<IPage>
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
         private readonly Encryption _encryption;
         private readonly IBrowser _browser;
         private readonly ConcurrentBag<IPage> _pool;
         private readonly SemaphoreSlim _semaphore;
 
-        public PlaywrightBrowserPool(IBrowser browser, AppSettings settings, ILogger logger, Encryption encryption)
+        public PlaywrightBrowserPool(IBrowser browser, AppSettings settings, IAppLogger logger, Encryption encryption)
         {
             _browser = browser;
             _settings = settings;

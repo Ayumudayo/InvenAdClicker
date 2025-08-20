@@ -40,7 +40,6 @@
   "AppSettings": {
     "MaxDegreeOfParallelism": 3,
     "IframeTimeoutMilliSeconds": 5000,
-    "RetryCount": 1,
     "ClickDelayMilliseconds": 300,
     "PageLoadTimeoutMilliseconds": 5000,
     "CommandTimeoutMilliSeconds": 5000,

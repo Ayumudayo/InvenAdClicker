@@ -18,14 +18,14 @@ namespace InvenAdClicker.Services.Selenium
     {
         private readonly ChromeDriver _driver;
         private readonly ChromeDriverService _service;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
         private readonly AppSettings _settings;
         private readonly Encryption _encryption;
         private readonly string _loginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";
         private short _instanceId;
         private int? _browserProcessId = null;
 
-        public SeleniumWebBrowser(AppSettings settings, ILogger logger, Encryption encryption)
+        public SeleniumWebBrowser(AppSettings settings, IAppLogger logger, Encryption encryption)
         {
             _settings = settings;
             _logger = logger;

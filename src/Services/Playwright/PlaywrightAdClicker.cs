@@ -1,6 +1,5 @@
 using Microsoft.Playwright;
 using InvenAdClicker.Models;
-using InvenAdClicker.Utils;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,10 +10,10 @@ namespace InvenAdClicker.Services.Playwright
     public class PlaywrightAdClicker : IAdClicker<IPage>
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
         private readonly IBrowserPool<IPage> _browserPool;
 
-        public PlaywrightAdClicker(AppSettings settings, ILogger logger, IBrowserPool<IPage> browserPool)
+        public PlaywrightAdClicker(AppSettings settings, IAppLogger logger, IBrowserPool<IPage> browserPool)
         {
             _settings = settings;
             _logger = logger;

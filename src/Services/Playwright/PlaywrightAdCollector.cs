@@ -1,6 +1,5 @@
 using Microsoft.Playwright;
 using InvenAdClicker.Models;
-using InvenAdClicker.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,9 +12,9 @@ namespace InvenAdClicker.Services.Playwright
     public class PlaywrightAdCollector : IAdCollector<IPage>
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
 
-        public PlaywrightAdCollector(AppSettings settings, ILogger logger)
+        public PlaywrightAdCollector(AppSettings settings, IAppLogger logger)
         {
             _settings = settings;
             _logger = logger;

@@ -3,7 +3,7 @@ using System;
 
 namespace InvenAdClicker.Utils
 {
-    public class Log4NetLogger : ILogger
+    public class Log4NetLogger : IAppLogger
     {
         private static readonly ILog _log = LogManager.GetLogger(typeof(Log4NetLogger));
 

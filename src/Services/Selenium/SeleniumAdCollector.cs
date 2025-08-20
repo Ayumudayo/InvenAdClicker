@@ -1,6 +1,5 @@
 using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
-using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using System;
@@ -13,9 +12,9 @@ namespace InvenAdClicker.Services.Selenium
     public class SeleniumAdCollector : IAdCollector<SeleniumWebBrowser>
     {
         private readonly AppSettings _settings;
-        private readonly ILogger _logger;
+        private readonly IAppLogger _logger;
 
-        public SeleniumAdCollector(AppSettings settings, ILogger logger)
+        public SeleniumAdCollector(AppSettings settings, IAppLogger logger)
         {
             _settings = settings;
             _logger = logger;

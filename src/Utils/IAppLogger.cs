@@ -2,7 +2,7 @@ using System;
 
 namespace InvenAdClicker.Utils
 {
-    public interface ILogger
+    public interface IAppLogger
     {
         void Info(string msg);
         void Warn(string msg);
