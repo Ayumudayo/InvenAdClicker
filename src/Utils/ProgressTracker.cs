@@ -108,6 +108,7 @@ namespace InvenAdClicker.Utils
         public void PrintProgress()
         {
             bool redirected = Console.IsOutputRedirected;
+            bool isWindowsTerminal = !redirected && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WT_SESSION"));
             if (_map.IsEmpty)
             {
                 lock (ConsoleLocker.Lock)
@@ -116,21 +117,31 @@ namespace InvenAdClicker.Utils
                 }
                 return;
             }
-
-            int urlW = Math.Max(20, _map.Keys.Max(k => k.Length) + 2);
             int statusW = Math.Max("Status".Length, Enum.GetNames(typeof(ProgressStatus)).Max(s => s.Length)) + 2;
             int rateW = 8;   // Speed(c/s)
             int succW = 8;   // Success(%)
             int etaW = 10;   // ETA
+            int thrdW = 6;   // Threads
             var urls = _map.Keys.OrderBy(k => k).ToList();
             int headerLines = 2; // header + separator
             var startUtc = DateTime.UtcNow;
+
+            // 화면 출력용 폭 계산: 창 너비에 맞춰 URL 열 폭을 조정
+            int baseWidth = statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+            int urlW = redirected ? Math.Max(20, _map.Keys.Max(k => k.Length) + 2)
+                                   : Math.Max(8, Console.WindowWidth - baseWidth);
+            int tableWidth = urlW + baseWidth;
+            if (!redirected && !isWindowsTerminal)
+            {
+                // 고전 콘솔의 경우 가로 스크롤 허용(가능 시)
+                EnsureBufferWidth(tableWidth);
+            }
 
             if (!redirected)
             {
                 lock (ConsoleLocker.Lock)
                 {
-                    Console.WriteLine(
+                    string header =
                         "URL".PadRight(urlW) +
                         "Status".PadRight(statusW) +
                         "Iter".PadRight(8) +
@@ -141,23 +152,30 @@ namespace InvenAdClicker.Utils
                         "Pending".PadRight(9) +
                         "ETA".PadRight(etaW) +
                         "Err".PadRight(6) +
-                        "Thrd");
-                    Console.WriteLine(new string('-', urlW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + 6));
+                        "Thrd".PadRight(thrdW);
+                    WriteLineFitting(header);
+                    WriteLineFitting(new string('-', tableWidth));
 
                     for (int i = 0; i < urls.Count; i++)
                     {
-                        PrintProgressLine(urls[i], _map[urls[i]], urlW, statusW, succW, rateW, etaW);
+                        PrintProgressLine(urls[i], _map[urls[i]], urlW, statusW, succW, rateW, etaW, thrdW, tableWidth);
                         Console.WriteLine();
                     }
                 }
             }
 
-            while (!_shouldStopProgress)
+            while (true)
             {
                 lock (ConsoleLocker.Lock)
                 {
                     if (!redirected)
                     {
+                        // 창 크기 변경 시 폭 재계산 및 필요 시 버퍼 확장
+                        baseWidth = statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+                        urlW = Math.Max(8, Console.WindowWidth - baseWidth);
+                        tableWidth = urlW + baseWidth;
+                        if (!isWindowsTerminal)
+                            EnsureBufferWidth(tableWidth);
                         for (int i = 0; i < urls.Count; i++)
                         {
                             var url = urls[i];
@@ -166,28 +184,32 @@ namespace InvenAdClicker.Utils
                             lock (info)
                             {
                                 TrySetCursor(0, headerLines + i);
-                                PrintProgressLine(url, info, urlW, statusW, succW, rateW, etaW);
+                                PrintProgressLine(url, info, urlW, statusW, succW, rateW, etaW, thrdW, tableWidth);
                             }
                         }
 
                         // Summary 갱신 위치로 이동(표 바로 아래)
                         int summaryRow = headerLines + urls.Count;
                         TrySetCursor(0, summaryRow);
-                        PrintSummary(urls, urlW, statusW, succW, rateW, etaW, startUtc);
+                        PrintSummary(urls, urlW, statusW, succW, rateW, etaW, startUtc, tableWidth);
                     }
                 }
 
-                if (_map.Values.All(info =>
-                    info.Status == ProgressStatus.Finished || info.Status == ProgressStatus.Error || info.Status == ProgressStatus.NoAds))
+                bool done = _map.Values.All(info =>
+                    info.Status == ProgressStatus.Finished || info.Status == ProgressStatus.Error || info.Status == ProgressStatus.NoAds);
+                if (done || _shouldStopProgress)
                 {
-                    Thread.Sleep(1000);
+                    Thread.Sleep(150); // 마지막 갱신 반영 여유
                     lock (ConsoleLocker.Lock)
                     {
                         if (redirected)
                         {
                             // 최종 테이블 및 요약 1회 출력
+                            // 리다이렉트 시에는 전체 길이 기준으로 열 너비 확보
+                            int urlWFull = Math.Max(20, _map.Keys.Max(k => k.Length) + 2);
+                            int tableWidthFull = urlWFull + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
                             Console.WriteLine(
-                                "URL".PadRight(urlW) +
+                                "URL".PadRight(urlWFull) +
                                 "Status".PadRight(statusW) +
                                 "Iter".PadRight(8) +
                                 "Ads".PadRight(8) +
@@ -197,24 +219,27 @@ namespace InvenAdClicker.Utils
                                 "Pending".PadRight(9) +
                                 "ETA".PadRight(etaW) +
                                 "Err".PadRight(6) +
-                                "Thrd");
-                            Console.WriteLine(new string('-', urlW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + 6));
+                                "Thrd".PadRight(thrdW));
+                            Console.WriteLine(new string('-', tableWidthFull));
                             for (int i = 0; i < urls.Count; i++)
                             {
                                 var info = _map[urls[i]];
-                                PrintProgressLine(urls[i], info, urlW, statusW, succW, rateW, etaW);
+                                lock (info)
+                                {
+                                    PrintProgressLine(urls[i], info, urlWFull, statusW, succW, rateW, etaW, thrdW, tableWidthFull);
+                                }
                                 Console.WriteLine();
                             }
-                            Console.WriteLine(new string('-', urlW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + 6));
-                            PrintSummary(urls, urlW, statusW, succW, rateW, etaW, startUtc);
+                            Console.WriteLine(new string('-', tableWidthFull));
+                            PrintSummary(urls, urlWFull, statusW, succW, rateW, etaW, startUtc, tableWidthFull);
                             Console.WriteLine();
                             Console.WriteLine("All tasks completed!");
+                            try { Console.Out.Flush(); } catch { }
                         }
                         else
                         {
                             TrySetCursor(0, headerLines + urls.Count + 1);
                             Console.WriteLine();
-                            Console.WriteLine("All tasks completed!");
                         }
                     }
                     break;
@@ -223,7 +248,7 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        private void PrintProgressLine(string url, ProgressInfo info, int urlW, int statusW, int succW, int rateW, int etaW)
+        private void PrintProgressLine(string url, ProgressInfo info, int urlW, int statusW, int succW, int rateW, int etaW, int thrdW, int tableWidth)
         {
             Console.ForegroundColor = info.Status switch
             {
@@ -255,8 +280,9 @@ namespace InvenAdClicker.Utils
                 eta = ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}" : $"{ts.Minutes:00}:{ts.Seconds:00}";
             }
 
+            string urlCell = FitWithEllipsis(url, urlW);
             string line =
-                $"{url.PadRight(urlW)}" +
+                $"{urlCell}" +
                 $"{statusText.PadRight(statusW)}" +
                 $"{info.Iteration.ToString().PadRight(8)}" +
                 $"{info.TotalAds.ToString().PadRight(8)}" +
@@ -266,13 +292,29 @@ namespace InvenAdClicker.Utils
                 $"{info.PendingClicks.ToString().PadRight(9)}" +
                 $"{eta.PadRight(etaW)}" +
                 $"{info.Errors.ToString().PadRight(6)}" +
-                $"{info.Threads}";
-            Console.Write(line.Substring(0, Math.Min(Console.WindowWidth, line.Length)));
+                $"{info.Threads.ToString().PadRight(thrdW)}";
+
+            if (!Console.IsOutputRedirected)
+            {
+                // 창 너비에 맞춰 정확히 덮어쓰기(래핑 방지)
+                int w = Console.WindowWidth;
+                if (line.Length >= w)
+                    Console.Write(line.Substring(0, Math.Max(0, w)));
+                else
+                    Console.Write(line.PadRight(w));
+            }
+            else
+            {
+                // 리다이렉트 시 전체 행 출력
+                if (line.Length < tableWidth)
+                    line = line.PadRight(tableWidth);
+                Console.Write(line);
+            }
 
             Console.ResetColor();
         }
 
-        private void PrintSummary(List<string> urls, int urlW, int statusW, int succW, int rateW, int etaW, DateTime startUtc)
+        private void PrintSummary(List<string> urls, int urlW, int statusW, int succW, int rateW, int etaW, DateTime startUtc, int tableWidth)
         {
             int totalAds = 0, clicked = 0, pending = 0, errors = 0;
             foreach (var u in urls)
@@ -299,9 +341,63 @@ namespace InvenAdClicker.Utils
             }
 
             string summary = $"Summary | Ads:{totalAds} Clicked:{clicked} Pending:{pending} Err:{errors} | Success:{succ} Speed:{rate} ETA:{eta}";
-            if (summary.Length < Console.WindowWidth)
-                summary = summary.PadRight(Console.WindowWidth);
-            Console.Write(summary.Substring(0, Math.Min(Console.WindowWidth, summary.Length)));
+            if (!Console.IsOutputRedirected)
+            {
+                int w = Console.WindowWidth;
+                if (summary.Length >= w)
+                    Console.Write(summary.Substring(0, Math.Max(0, w)));
+                else
+                    Console.Write(summary.PadRight(w));
+            }
+            else
+            {
+                if (summary.Length < tableWidth)
+                    summary = summary.PadRight(tableWidth);
+                Console.Write(summary);
+            }
+        }
+
+        private static void EnsureBufferWidth(int requiredWidth)
+        {
+            try
+            {
+                // 창 너비보다 작게 설정할 수 없으므로 보정
+                int desiredWidth = Math.Max(requiredWidth, Console.WindowWidth);
+                if (Console.BufferWidth < desiredWidth)
+                {
+                    int desiredHeight = Math.Max(Console.BufferHeight, Console.WindowHeight);
+                    Console.SetBufferSize(desiredWidth, desiredHeight);
+                }
+            }
+            catch
+            {
+                // 일부 호스트(Windows Terminal 등)에서는 가로 스크롤이 지원되지 않을 수 있음
+                // 실패 시 그냥 무시하고 진행(래핑은 호스트가 처리)
+            }
+        }
+
+        private static string FitWithEllipsis(string s, int width)
+        {
+            if (width <= 0) return string.Empty;
+            if (s.Length <= width) return s.PadRight(width);
+            if (width == 1) return "…"; // 최소 표기
+            return s.Substring(0, Math.Max(0, width - 1)) + "…";
+        }
+
+        private static void WriteLineFitting(string s)
+        {
+            if (!Console.IsOutputRedirected)
+            {
+                int w = Console.WindowWidth;
+                if (s.Length > w)
+                    Console.WriteLine(s.Substring(0, Math.Max(0, w)));
+                else
+                    Console.WriteLine(s);
+            }
+            else
+            {
+                Console.WriteLine(s);
+            }
         }
     }
 }
