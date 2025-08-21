@@ -36,10 +36,14 @@ namespace InvenAdClicker.Services.Selenium
                 {
                     try
                     {
+                        var frameSrc = iframe.GetAttribute("src") ?? string.Empty;
+                        if (!Utils.AdAllowList.IsAllowed(frameSrc))
+                            continue; // 허용된 프레임만 처리
+
                         driver.SwitchTo().Frame(iframe);
                         var linksInFrame = driver.FindElements(By.TagName("a"))
                             .Select(e => e.GetAttribute("href"))
-                            .Where(h => !string.IsNullOrEmpty(h));
+                            .Where(h => !string.IsNullOrEmpty(h) && Utils.AdAllowList.IsAllowed(h!));
                         foreach (var link in linksInFrame)
                         {
                             allLinks.Add(link);

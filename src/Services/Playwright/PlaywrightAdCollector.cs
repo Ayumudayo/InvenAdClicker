@@ -23,9 +23,7 @@ namespace InvenAdClicker.Services.Playwright
         public async Task<List<string>> CollectLinksAsync(IPage page, string url, CancellationToken cancellationToken)
         {
             var allLinks = new HashSet<string>();
-            bool HasAny(string[]? arr) => arr != null && arr.Length > 0;
-            bool ContainsAllowed(string value, string[]? allowList)
-                => HasAny(allowList) && allowList!.Any(p => value.Contains(p, StringComparison.OrdinalIgnoreCase));
+            bool IsAllowed(string value) => Utils.AdAllowList.IsAllowed(value);
             for (int i = 0; i < _settings.CollectionAttempts; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -57,11 +55,7 @@ namespace InvenAdClicker.Services.Playwright
                     try
                     {
                         var frameUrl = frame.Url ?? string.Empty;
-                        if (HasAny(_settings.FrameSrcAllowListContains) &&
-                            !ContainsAllowed(frameUrl, _settings.FrameSrcAllowListContains))
-                        {
-                            continue; // 허용되지 않는 프레임은 스킵
-                        }
+                        if (!IsAllowed(frameUrl)) continue; // 허용되지 않는 프레임은 스킵
 
                         var linksInFrame = await frame.Locator("a[href]").AllAsync();
                         foreach (var linkLocator in linksInFrame)
@@ -72,11 +66,8 @@ namespace InvenAdClicker.Services.Playwright
                                 !href.Contains("empty.gif", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (href.StartsWith("//")) href = "https:" + href;
-                                if (!HasAny(_settings.LinkAllowListContains) ||
-                                    ContainsAllowed(href, _settings.LinkAllowListContains))
-                                {
+                                if (IsAllowed(href))
                                     allLinks.Add(href);
-                                }
                             }
                         }
                     }

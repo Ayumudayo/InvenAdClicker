@@ -39,7 +39,7 @@ namespace InvenAdClicker
                 .ConfigureServices((hostContext, services) =>
                 {
                     var appSettings = hostContext.Configuration.GetSection("AppSettings").Get<AppSettings>()
-                        ?? throw new ApplicationException("appsettings.json 파일에서 AppSettings 섹션을 찾을 수 없거나 비어있습니다.");
+                        ?? new AppSettings();
                     services.AddSingleton(appSettings);
 
                     services.AddSingleton<IAppLogger, MsLoggerAdapter>();

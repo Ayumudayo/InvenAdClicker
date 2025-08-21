@@ -30,63 +30,75 @@ namespace InvenAdClicker.Utils
                     var appNode = JsonSerializer.SerializeToNode(_settings, typeof(AppSettings)) as JsonObject ?? new JsonObject();
                     // 배열 필드는 명시적 빈 배열로 초기화하여 사용자가 편집 가능
                     if (appNode["TargetUrls"] is null) appNode["TargetUrls"] = new JsonArray();
-                    if (appNode["LinkAllowListContains"] is null) appNode["LinkAllowListContains"] = new JsonArray();
-                    if (appNode["FrameSrcAllowListContains"] is null) appNode["FrameSrcAllowListContains"] = new JsonArray();
                     return appNode;
+                }
+
+                JsonObject root;
+                bool changed = false;
+                // 로컬 유틸: 파일 읽기/파싱 시도. 실패 시 백업하고 false 반환
+                bool TryReadText(out string text)
+                {
+                    try
+                    {
+                        text = File.ReadAllText(SettingsFileName);
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"설정 파일을 읽지 못했습니다: {ex.Message}. 백업 후 기본으로 전환합니다.");
+                        TryBackup(SettingsFileName);
+                        text = string.Empty;
+                        return false;
+                    }
+                }
+
+                bool TryParseRoot(string text, out JsonObject parsedRoot)
+                {
+                    try
+                    {
+                        var node = JsonNode.Parse(text);
+                        if (node is JsonObject obj)
+                        {
+                            parsedRoot = obj;
+                            return true;
+                        }
+                        _logger.Warn("설정 파일의 루트가 객체가 아닙니다. 백업 후 기본으로 전환합니다.");
+                        TryBackup(SettingsFileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"설정 파일 JSON 파싱 실패: {ex.Message}. 백업 후 기본으로 전환합니다.");
+                        TryBackup(SettingsFileName);
+                    }
+                    parsedRoot = null!;
+                    return false;
                 }
 
                 if (!File.Exists(SettingsFileName))
                 {
-                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
-                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
-                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
-                    _logger.Info($"기본 설정 파일 '{SettingsFileName}'을(를) 생성했습니다.");
-                    return;
+                    _logger.Info($"설정 파일이 없어 기본 구성을 메모리에서 생성합니다: '{SettingsFileName}'");
+                    root = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
+                    changed = true;
                 }
-
-                // 손상되었거나 구조가 다르면 백업 후 기본 파일로 복구
-                string jsonString;
-                try
+                else if (TryReadText(out var raw) && TryParseRoot(raw, out var parsed))
                 {
-                    jsonString = File.ReadAllText(SettingsFileName);
+                    root = parsed;
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.Warn($"설정 파일을 읽지 못했습니다: {ex.Message}. 기본 파일로 복구합니다.");
-                    TryBackup(SettingsFileName);
-                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
-                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
-                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
-                    return;
-                }
-
-                JsonNode? jsonNode;
-                try
-                {
-                    jsonNode = JsonNode.Parse(jsonString);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Warn($"설정 파일 JSON 파싱 실패: {ex.Message}. 백업 후 기본 파일로 복구합니다.");
-                    TryBackup(SettingsFileName);
-                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
-                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
-                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
-                    return;
-                }
-
-                if (jsonNode is not JsonObject root)
-                {
-                    _logger.Warn("설정 파일의 루트가 객체가 아닙니다. 백업 후 기본 파일로 복구합니다.");
-                    TryBackup(SettingsFileName);
-                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
-                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
-                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
-                    return;
+                    root = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
+                    changed = true;
                 }
 
                 var appSettingsNode = root["AppSettings"] as JsonObject;
-                bool changed = false;
+                
+                if (appSettingsNode is null)
+                {
+                    _logger.Info("AppSettings 섹션이 없어 기본 섹션을 생성합니다.");
+                    appSettingsNode = BuildDefaultAppNode();
+                    root["AppSettings"] = appSettingsNode;
+                    changed = true;
+                }
                 if (appSettingsNode is null)
                 {
                     _logger.Info("AppSettings 섹션이 없어 기본 섹션을 생성합니다.");

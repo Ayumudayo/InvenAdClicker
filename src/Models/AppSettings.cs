@@ -14,8 +14,5 @@ namespace InvenAdClicker.Models
         public bool DisableFonts { get; set; } = true;
         public string[]? TargetUrls { get; set; }
         public string BrowserType { get; set; } = "Playwright"; // "Selenium" or "Playwright"
-
-        public string[]? LinkAllowListContains { get; set; }
-        public string[]? FrameSrcAllowListContains { get; set; }
     }
 }
