@@ -31,14 +31,18 @@ namespace InvenAdClicker
             };
 
             using IHost host = Host.CreateDefaultBuilder(args)
-                .ConfigureLogging(logging => logging.ClearProviders())
+                .ConfigureLogging(logging =>
+                {
+                    logging.ClearProviders();
+                    logging.AddProvider(new RollingFileLoggerProvider());
+                })
                 .ConfigureServices((hostContext, services) =>
                 {
                     var appSettings = hostContext.Configuration.GetSection("AppSettings").Get<AppSettings>()
                         ?? throw new ApplicationException("appsettings.json 파일에서 AppSettings 섹션을 찾을 수 없거나 비어있습니다.");
                     services.AddSingleton(appSettings);
 
-                    services.AddSingleton<IAppLogger, Log4NetLogger>();
+                    services.AddSingleton<IAppLogger, MsLoggerAdapter>();
                     services.AddSingleton<Encryption>();
                     services.AddSingleton(provider => ProgressTracker.Instance);
                     services.AddSingleton<SettingsManager>();
@@ -114,7 +118,7 @@ namespace InvenAdClicker
                 // 그 외 모든 예외 처리
                 var errorMessage = "예기치 못한 오류가 발생했습니다. 자세한 내용은 로그를 확인하세요.";
                 Console.WriteLine(errorMessage);
-                logger.Error(errorMessage, ex);
+                logger.Fatal(errorMessage, ex);
             }
             finally
             {

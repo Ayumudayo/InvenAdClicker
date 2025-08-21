@@ -8,5 +8,6 @@ namespace InvenAdClicker.Utils
         void Warn(string msg);
         void Error(string msg, Exception? ex = null);
         void Debug(string msg);
+        void Fatal(string msg, Exception? ex = null);
     }
 }
