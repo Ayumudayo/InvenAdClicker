@@ -31,6 +31,9 @@ namespace InvenAdClicker.Utils
         public DateTime? FirstUpdateUtc { get; set; }
         public DateTime? FirstClickUtc { get; set; }
         public DateTime? LastUpdateUtc { get; set; }
+
+        // Finished 시점의 cps(클릭/초)를 고정 보관
+        public double? CompletedCps { get; set; }
     }
 
     public class ProgressTracker
@@ -70,6 +73,7 @@ namespace InvenAdClicker.Utils
             lock (info)
             {
                 var now = DateTime.UtcNow;
+                var prevStatus = info.Status;
                 if (status.HasValue)
                     info.Status = status.Value;
 
@@ -87,8 +91,23 @@ namespace InvenAdClicker.Utils
                 if (clickDelta > 0 && !info.FirstClickUtc.HasValue)
                     info.FirstClickUtc = now;
 
+                bool becameFinished = false;
                 if (info.Status == ProgressStatus.Clicking && info.PendingClicks <= 0)
+                {
                     info.Status = ProgressStatus.Finished;
+                    becameFinished = true;
+                }
+                if (status.HasValue && status.Value == ProgressStatus.Finished && prevStatus != ProgressStatus.Finished)
+                {
+                    becameFinished = true;
+                }
+
+                // Finished로 전환되는 순간 cps를 고정 저장
+                if (becameFinished && info.FirstClickUtc.HasValue && !info.CompletedCps.HasValue)
+                {
+                    var elapsedSec = Math.Max(1.0, (now - info.FirstClickUtc.Value).TotalSeconds);
+                    info.CompletedCps = info.ClickedAds / elapsedSec;
+                }
             }
         }
 
@@ -268,12 +287,17 @@ namespace InvenAdClicker.Utils
             string succ = info.TotalAds > 0 ? ($"{(info.ClickedAds * 100.0 / Math.Max(1, info.TotalAds)):0.#}%") : "-";
             // 속도(클릭/초)
             double cps = 0.0;
-            if (info.FirstClickUtc.HasValue)
+            if (info.Status == ProgressStatus.Finished)
+            {
+                // 완료된 URL은 완료 시점 cps를 그대로 유지
+                cps = info.CompletedCps ?? 0.0;
+            }
+            else if (info.FirstClickUtc.HasValue)
             {
                 var elapsedSec = Math.Max(1.0, (DateTime.UtcNow - info.FirstClickUtc.Value).TotalSeconds);
                 cps = info.ClickedAds / elapsedSec;
             }
-            string rate = cps > 0 ? $"{cps:0.##}c/s" : "-";
+            string rate = cps > 0 ? $"{cps:0.00}c/s" : "-";
             // ETA
             string eta = "-";
             if (cps > 0 && info.PendingClicks > 0)
@@ -320,6 +344,8 @@ namespace InvenAdClicker.Utils
         private void PrintSummary(List<string> urls, int urlW, int statusW, int succW, int rateW, int etaW, DateTime startUtc, int tableWidth)
         {
             int totalAds = 0, clicked = 0, pending = 0, errors = 0;
+            // 각 URL의 cps(행 표시 논리와 동일)를 수집하여 평균을 요약 Speed로 사용
+            var cpsList = new List<double>();
             foreach (var u in urls)
             {
                 var info = _map[u];
@@ -329,16 +355,29 @@ namespace InvenAdClicker.Utils
                     clicked += info.ClickedAds;
                     pending += info.PendingClicks;
                     errors += info.Errors;
+
+                    double cps = 0.0;
+                    if (info.Status == ProgressStatus.Finished)
+                    {
+                        cps = info.CompletedCps ?? 0.0;
+                    }
+                    else if (info.FirstClickUtc.HasValue)
+                    {
+                        var elapsedSec = Math.Max(1.0, (DateTime.UtcNow - info.FirstClickUtc.Value).TotalSeconds);
+                        cps = info.ClickedAds / elapsedSec;
+                    }
+                    if (cps > 0)
+                        cpsList.Add(cps);
                 }
             }
-            var elapsed = Math.Max(1.0, (DateTime.UtcNow - startUtc).TotalSeconds);
-            var cps = clicked / elapsed; // 전체 클릭/초
-            string rate = cps > 0 ? $"{cps:0.##}c/s" : "-";
+            // 요약 Speed = 각 URL의 cps 평균(클릭 발생한 URL만)
+            var avgCps = cpsList.Count > 0 ? cpsList.Average() : 0.0;
+            string rate = avgCps > 0 ? $"{avgCps:0.00}c/s" : "-";
             string succ = totalAds > 0 ? ($"{(clicked * 100.0 / Math.Max(1, totalAds)):0.#}%") : "-";
             string eta = "-";
-            if (cps > 0 && pending > 0)
+            if (avgCps > 0 && pending > 0)
             {
-                var sec = pending / cps;
+                var sec = pending / avgCps;
                 var ts = TimeSpan.FromSeconds(sec);
                 eta = ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}" : $"{ts.Minutes:00}:{ts.Seconds:00}";
             }
