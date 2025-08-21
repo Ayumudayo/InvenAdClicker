@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text;
 
 namespace InvenAdClicker.Utils
 {
@@ -174,7 +175,7 @@ namespace InvenAdClicker.Utils
                 if (changed)
                 {
                     var options = new JsonSerializerOptions { WriteIndented = true };
-                    File.WriteAllText(SettingsFileName, root.ToJsonString(options));
+                    AtomicWrite(SettingsFileName, root.ToJsonString(options));
                     _logger.Info("appsettings.json 구성이 최신 스키마로 갱신되었습니다.");
                 }
             }
@@ -193,6 +194,24 @@ namespace InvenAdClicker.Utils
                 File.Move(path, backup);
             }
             catch { }
+        }
+
+        // 설정 파일 원자적 기록: 같은 디렉토리에 임시 파일을 쓰고 Move로 교체
+        private static void AtomicWrite(string path, string content)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir)) dir = ".";
+                Directory.CreateDirectory(dir);
+                var temp = Path.Combine(dir, Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+                File.WriteAllText(temp, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                File.Move(temp, path, overwrite: true);
+            }
+            catch
+            {
+                try { File.WriteAllText(path, content); } catch { }
+            }
         }
     }
 }

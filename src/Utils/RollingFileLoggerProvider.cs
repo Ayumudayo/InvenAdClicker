@@ -43,7 +43,7 @@ namespace InvenAdClicker.Utils
                         if (logLevel == LogLevel.Critical)
                         {
                             var fatalLine = $"[{now:yyyy-MM-dd HH:mm:ss,fff}][Thread : {Thread.CurrentThread.ManagedThreadId}][{MapLevel(logLevel)}] {msg}";
-                            var fatalPath = Path.Combine("logs", "fatal.log");
+                            var fatalPath = GetFatalPath(now);
                             EnsureDirectory(fatalPath);
                             var fatalText = exception is null ?
                                 fatalLine + Environment.NewLine :
@@ -61,6 +61,13 @@ namespace InvenAdClicker.Utils
             private static string GetDailyPath(DateTime now)
             {
                 var dir = Path.Combine("logs", now.ToString("yyyy"), now.ToString("MM"));
+                var file = now.ToString("yyyy-MM-dd") + ".log";
+                return Path.Combine(dir, file);
+            }
+
+            private static string GetFatalPath(DateTime now)
+            {
+                var dir = Path.Combine("logs", "fatal", now.ToString("yyyy"), now.ToString("MM"));
                 var file = now.ToString("yyyy-MM-dd") + ".log";
                 return Path.Combine(dir, file);
             }
