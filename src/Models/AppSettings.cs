@@ -12,7 +12,12 @@ namespace InvenAdClicker.Models
         public bool DisableImages { get; set; } = true;
         public bool DisableCss { get; set; } = true;
         public bool DisableFonts { get; set; } = true;
-        public string[]? TargetUrls { get; set; }
+        public string[]? TargetUrls { get; set; } = new[]
+        {
+            "https://www.inven.co.kr/",
+            "https://m.inven.co.kr/",
+            "https://it.inven.co.kr/",
+        };
         public string BrowserType { get; set; } = "Playwright"; // "Selenium" or "Playwright"
     }
 }
