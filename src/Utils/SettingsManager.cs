@@ -24,16 +24,76 @@ namespace InvenAdClicker.Utils
         {
             try
             {
-                var jsonString = File.ReadAllText(SettingsFileName);
-                var jsonNode = JsonNode.Parse(jsonString);
-                if (jsonNode is null)
-                    return;
+                // 기본 설정 파일이 없으면 현재 런타임 기본값으로 생성
+                JsonObject BuildDefaultAppNode()
+                {
+                    var appNode = JsonSerializer.SerializeToNode(_settings, typeof(AppSettings)) as JsonObject ?? new JsonObject();
+                    // 배열 필드는 명시적 빈 배열로 초기화하여 사용자가 편집 가능
+                    if (appNode["TargetUrls"] is null) appNode["TargetUrls"] = new JsonArray();
+                    if (appNode["LinkAllowListContains"] is null) appNode["LinkAllowListContains"] = new JsonArray();
+                    if (appNode["FrameSrcAllowListContains"] is null) appNode["FrameSrcAllowListContains"] = new JsonArray();
+                    return appNode;
+                }
 
-                var appSettingsNode = jsonNode["AppSettings"] as JsonObject;
-                if (appSettingsNode is null)
+                if (!File.Exists(SettingsFileName))
+                {
+                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
+                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
+                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
+                    _logger.Info($"기본 설정 파일 '{SettingsFileName}'을(를) 생성했습니다.");
                     return;
+                }
 
+                // 손상되었거나 구조가 다르면 백업 후 기본 파일로 복구
+                string jsonString;
+                try
+                {
+                    jsonString = File.ReadAllText(SettingsFileName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"설정 파일을 읽지 못했습니다: {ex.Message}. 기본 파일로 복구합니다.");
+                    TryBackup(SettingsFileName);
+                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
+                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
+                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
+                    return;
+                }
+
+                JsonNode? jsonNode;
+                try
+                {
+                    jsonNode = JsonNode.Parse(jsonString);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"설정 파일 JSON 파싱 실패: {ex.Message}. 백업 후 기본 파일로 복구합니다.");
+                    TryBackup(SettingsFileName);
+                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
+                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
+                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
+                    return;
+                }
+
+                if (jsonNode is not JsonObject root)
+                {
+                    _logger.Warn("설정 파일의 루트가 객체가 아닙니다. 백업 후 기본 파일로 복구합니다.");
+                    TryBackup(SettingsFileName);
+                    var rootNew = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
+                    var createOpts = new JsonSerializerOptions { WriteIndented = true };
+                    File.WriteAllText(SettingsFileName, rootNew.ToJsonString(createOpts));
+                    return;
+                }
+
+                var appSettingsNode = root["AppSettings"] as JsonObject;
                 bool changed = false;
+                if (appSettingsNode is null)
+                {
+                    _logger.Info("AppSettings 섹션이 없어 기본 섹션을 생성합니다.");
+                    appSettingsNode = BuildDefaultAppNode();
+                    root["AppSettings"] = appSettingsNode;
+                    changed = true;
+                }
 
                 // 새 필드 추가: AppSettings 클래스의 공개 속성 중 JSON에 없는 항목은 기본값으로 추가
                 var props = typeof(AppSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -102,7 +162,7 @@ namespace InvenAdClicker.Utils
                 if (changed)
                 {
                     var options = new JsonSerializerOptions { WriteIndented = true };
-                    File.WriteAllText(SettingsFileName, jsonNode.ToJsonString(options));
+                    File.WriteAllText(SettingsFileName, root.ToJsonString(options));
                     _logger.Info("appsettings.json 구성이 최신 스키마로 갱신되었습니다.");
                 }
             }
@@ -110,6 +170,17 @@ namespace InvenAdClicker.Utils
             {
                 _logger.Warn($"설정 파일을 자동으로 갱신하지 못했습니다: {ex.Message}");
             }
+        }
+
+        private static void TryBackup(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return;
+                var backup = path + ".bak." + DateTime.Now.ToString("yyyyMMddHHmmss");
+                File.Move(path, backup);
+            }
+            catch { }
         }
     }
 }
