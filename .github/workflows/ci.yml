@@ -47,11 +47,20 @@ jobs:
       - name: Build
         run: dotnet build InvenAdClicker.sln --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test InvenAdClicker.sln --no-build --verbosity normal
+      - name: Test (skip if no test projects)
+        shell: pwsh
+        run: |
+          $testProjects = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { (Select-String -Path $_.FullName -Pattern '<PackageReference Include="(xunit|nunit|MSTest)"' -Quiet) }
+          if ($testProjects) {
+            dotnet test InvenAdClicker.sln --no-build --verbosity normal
+          } else {
+            Write-Host 'No test projects found. Skipping dotnet test.'
+          }
+
+      - name: Publish (Release)
+        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish
 
       - uses: actions/upload-artifact@v4
         with:
-          name: build-output
-          path: |
-            **/bin/**/*
+          name: publish-output
+          path: ./publish/**
