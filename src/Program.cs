@@ -65,11 +65,23 @@ namespace InvenAdClicker
 
                 IPipelineRunner runner;
 
-                // 기본값
+                // 로그인 검증 선행: 자격증명이 없거나 로그인 실패 시 이후 단계로 진행하지 않음
+                // 브라우저 타입에 맞춰 1회 검증 후 풀/파이프라인 구성
                 if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
                 {
+                    // 실행 환경에서 Playwright 브라우저 미설치 시 자동 설치 후 재시작 안내
+                    if (await PlaywrightBootstrap.EnsureInstalledIfMissingAsync(logger))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("Playwright 브라우저를 설치했습니다. 프로그램을 종료한 뒤 다시 시작해 주세요.");
+                        Console.WriteLine("아무 키나 누르면 종료합니다...");
+                        Console.ReadKey();
+                        return; // 이후 단계 진행 중단
+                    }
+
                     var playwright = await Playwright.CreateAsync();
                     var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+                    await LoginVerifier.VerifyPlaywrightAsync(browser, settings, logger, encryption, cts.Token);
                     var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
                     await playwrightPool.InitializePoolAsync(cts.Token);
 
@@ -79,6 +91,7 @@ namespace InvenAdClicker
                 }
                 else
                 {
+                    await LoginVerifier.VerifySeleniumAsync(settings, logger, encryption, cts.Token);
                     var browserPool = new BrowserPool(settings, logger, encryption);
                     await browserPool.InitializePoolAsync(cts.Token);
 
