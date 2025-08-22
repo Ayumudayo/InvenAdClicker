@@ -4,10 +4,8 @@ using System.Threading.Tasks;
 
 namespace InvenAdClicker.Services.Interfaces
 {
-    public interface IAdCollector
+    public interface IAdCollector<TPage>
     {
-        Task<Dictionary<string, IEnumerable<string>>> CollectAsync(
-            string[] urls,
-            CancellationToken cancellationToken = default);
+        Task<List<string>> CollectLinksAsync(TPage page, string url, CancellationToken cancellationToken);
     }
 }

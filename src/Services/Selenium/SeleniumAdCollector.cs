@@ -1,159 +1,87 @@
-using InvenAdClicker.Config;
+using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
-using InvenAdClicker.Services.Selenium;
-using InvenAdClicker.Utils;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
-
-public class SeleniumAdCollector : IAdCollector
+namespace InvenAdClicker.Services.Selenium
 {
-    private readonly AppSettings _settings;
-    private readonly ILogger _logger;
-    private readonly BrowserPool _browserPool;
-    private readonly ProgressTracker _progress;
-
-    public SeleniumAdCollector(AppSettings settings, ILogger logger,
-        BrowserPool browserPool, ProgressTracker progress)
+    public class SeleniumAdCollector : IAdCollector<SeleniumWebBrowser>
     {
-        _settings = settings;
-        _logger = logger;
-        _browserPool = browserPool;
-        _progress = progress;
-    }
+        private readonly AppSettings _settings;
+        private readonly IAppLogger _logger;
 
-    public async Task<Dictionary<string, IEnumerable<string>>> CollectAsync(
-        string[] urls, CancellationToken cancellationToken = default)
-    {
-        var result = new ConcurrentDictionary<string, IEnumerable<string>>();
-        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleWriter = true, SingleReader = false });
-
-        _ = Task.Run(async () =>
+        public SeleniumAdCollector(AppSettings settings, IAppLogger logger)
         {
-            foreach (var url in urls)
-            {
-                await channel.Writer.WriteAsync(url, cancellationToken);
-                _progress.Update(url, ProgressStatus.Waiting, iterDelta: 1);
-            }
-            channel.Writer.Complete();
-        }, cancellationToken);
-
-        var workers = new Task[_settings.MaxDegreeOfParallelism];
-        for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
-        {
-            int workerId = i;
-            workers[i] = Task.Run(async () =>
-            {
-                var browser = await _browserPool.AcquireAsync(cancellationToken);
-                _logger.Info($"CollectorWorker {workerId} started");
-            
-                try
-                {
-                    await foreach (var url in channel.Reader.ReadAllAsync(cancellationToken))
-                    {
-                        _progress.Update(url, ProgressStatus.Collecting, threadDelta: +1);
-                        List<string> links = null;
-            
-                        try
-                        {
-                            links = await CollectWithBrowserAsync(browser, url, cancellationToken);
-                            result[url] = links;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Error($"[Collector{workerId}] Failed: {url}", ex);
-                            _progress.Update(url, ProgressStatus.Error, errDelta: 1);
-            
-                            // 문제 브라우저 폐기
-                            browser.Dispose();
-
-                            // 폐기 후 Release
-                            // browser = null 이므로 세마포어 릴리즈 됨
-                            _browserPool.Release(browser);
-
-                            // 새 브라우저로 교체
-                            browser = await _browserPool.AcquireAsync(cancellationToken);
-            
-                            // 다음 URL 계속 처리
-                            continue;
-                        }
-                        finally
-                        {
-                            _progress.Update(url, threadDelta: -1);
-                        }
-            
-                        // 정상 수집 후 상태 업데이트
-                        var status = links.Count > 0 ? ProgressStatus.Collected : ProgressStatus.NoAds;
-                        _progress.Update(url, status, adsDelta: links.Count);
-                        _logger.Info($"[Collector{workerId}] {url} => {links.Count} links");
-                    }
-                }
-                finally
-                {
-                    _browserPool.Release(browser);
-                    _logger.Info($"CollectorWorker {workerId} stopped");
-                }
-            }, cancellationToken);
-
+            _settings = settings;
+            _logger = logger;
         }
 
-        await Task.WhenAll(workers);
-        return result.ToDictionary(kv => kv.Key, kv => kv.Value);
-    }
-
-    private async Task<List<string>> CollectWithBrowserAsync(
-        SeleniumWebBrowser browser, string url, CancellationToken cancellationToken)
-    {
-        var driver = browser.Driver;
-        var allLinks = new HashSet<string>();
-
-        for (int i = 0; i < _settings.CollectionAttempts; i++)
+        public Task<List<string>> CollectLinksAsync(SeleniumWebBrowser browser, string url, CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            var driver = browser.Driver;
+            var allLinks = new HashSet<string>();
 
-            driver.Navigate().GoToUrl(url);
-            WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+            for (int i = 0; i < _settings.CollectionAttempts; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var iframe in driver.FindElements(By.TagName("iframe")))
+                driver.Navigate().GoToUrl(url);
+                WaitForPageLoad(driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+
+                foreach (var iframe in driver.FindElements(By.TagName("iframe")))
+                {
+                    try
+                    {
+                        var frameSrc = iframe.GetAttribute("src") ?? string.Empty;
+                        if (!Utils.AdAllowList.IsAllowed(frameSrc))
+                            continue; // 허용된 프레임만 처리
+
+                        driver.SwitchTo().Frame(iframe);
+                        var linksInFrame = driver.FindElements(By.TagName("a"))
+                            .Select(e => e.GetAttribute("href"))
+                            .Where(h => !string.IsNullOrEmpty(h) && Utils.AdAllowList.IsAllowed(h!));
+                        foreach (var link in linksInFrame)
+                        {
+                            allLinks.Add(link);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"[수집기] iframe 처리 실패 {url}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        driver.SwitchTo().DefaultContent();
+                    }
+                }
+
+                if (i < _settings.CollectionAttempts - 1)
+                {
+                    driver.Navigate().Refresh();
+                }
+            }
+
+            return Task.FromResult(allLinks.ToList());
+        }
+
+        private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
+        {
+            var end = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < end)
             {
                 try
                 {
-                    driver.SwitchTo().Frame(iframe);
-                    var linksInFrame = driver.FindElements(By.TagName("a"))
-                        .Select(e => e.GetAttribute("href"))
-                        .Where(h => !string.IsNullOrEmpty(h));
-                    foreach (var link in linksInFrame)
-                    {
-                        allLinks.Add(link);
-                    }
+                    var state = ((IJavaScriptExecutor)driver).ExecuteScript("return document.readyState")?.ToString();
+                    if (state == "complete" || state == "interactive") return;
                 }
-                catch (Exception ex)
-                { 
-                    _logger.Warn($"[Collector] iframe fail {url}: {ex.Message}");
-                }
-                finally
-                {
-                    driver.SwitchTo().DefaultContent();
-                }
+                catch { }
+                Thread.Sleep(100);
             }
-
-            if (i < _settings.CollectionAttempts - 1)
-            {
-                driver.Navigate().Refresh();
-            }
+            _logger.Warn($"[Collector] 페이지 로드 타임아웃({timeout.TotalMilliseconds}ms). 현재 상태로 진행합니다.");
         }
-
-        return allLinks.ToList();
     }
-
-    private void WaitForPageLoad(IWebDriver driver, TimeSpan timeout)
-        => new WebDriverWait(driver, timeout)
-            .Until(d => ((IJavaScriptExecutor)d)
-                .ExecuteScript("return document.readyState").Equals("complete"));
 }

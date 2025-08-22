@@ -1,22 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-		<OutputType>Exe</OutputType>
-		<TargetFramework>net6.0</TargetFramework>
-		<ImplicitUsings>disable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-		<AssemblyVersion></AssemblyVersion>
-	</PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Release publish 시 PDB 제외 -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Costura.Fody" Version="5.7.0">
 		  <PrivateAssets>all</PrivateAssets>
-		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="DotNetSeleniumExtras.WaitHelpers" Version="3.11.0" />
-		<PackageReference Include="log4net" Version="2.0.17" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.5" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.5" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Playwright" Version="1.44.0" />
 		<PackageReference Include="Selenium.WebDriver" Version="4.20.0" />
 		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
 	</ItemGroup>
@@ -37,23 +43,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="log4net.config">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 
-	<ItemGroup>
-		<AssemblyAttribute Include="log4net.Config.XmlConfigurator">
-			<ConfigFile>log4net.config</ConfigFile>
-		</AssemblyAttribute>
-	</ItemGroup>
+  
 
-	<ItemGroup>
-	  <EditorConfigFiles Remove="E:\USB 백업\250510\Repo\InvenAdClicker\.editorconfig" />
-	</ItemGroup>
 
-	<ItemGroup>
-	  <None Include="E:\USB 백업\250510\Repo\InvenAdClicker\.editorconfig" />
-	</ItemGroup>
 
 </Project>

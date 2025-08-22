@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Publish
+        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish /p:Version=${{ env.VERSION }}
+
+      - name: Verify publish assets exist
+        shell: pwsh
+        run: |
+          $required = @(
+            '.\\publish\\InvenAdClicker.dll',
+            '.\\publish\\appsettings.json',
+            '.\\publish\\playwright.ps1'
+          )
+          $missing = @()
+          foreach ($f in $required) { if (-not (Test-Path $f)) { $missing += $f } }
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing required publish files:`n$($missing -join "`n")"
+            exit 1
+          }
+
+      - name: Copy README and LICENSE into publish folder
+        shell: pwsh
+        run: |
+          Copy-Item README.md .\publish\README.md
+          Copy-Item LICENSE .\publish\LICENSE
+
+      - name: Zip Release
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          filename: InvenAdClicker-${{ env.VERSION }}.zip
+          directory: ./publish
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          artifacts: "./publish/InvenAdClicker-${{ env.VERSION }}.zip"
+          generateReleaseNotes: true
