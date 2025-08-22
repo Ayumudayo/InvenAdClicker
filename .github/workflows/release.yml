@@ -5,13 +5,21 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
+    if: github.event.deleted == false
     runs-on: windows-latest
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -27,10 +35,25 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Check tag exists on remote
+        id: tag_check
+        shell: bash
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag exists on remote: $TAG"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag NOT found on remote: $TAG"
+          fi
+
       - name: Publish
+        if: steps.tag_check.outputs.exists == 'true'
         run: dotnet publish InvenAdClicker.sln -c Release -o ./publish /p:Version=${{ env.VERSION }}
 
       - name: Verify publish assets exist
+        if: steps.tag_check.outputs.exists == 'true'
         shell: pwsh
         run: |
           $required = @(
@@ -46,18 +69,21 @@ jobs:
           }
 
       - name: Copy README and LICENSE into publish folder
+        if: steps.tag_check.outputs.exists == 'true'
         shell: pwsh
         run: |
           Copy-Item README.md .\publish\README.md
           Copy-Item LICENSE .\publish\LICENSE
 
       - name: Zip Release
+        if: steps.tag_check.outputs.exists == 'true'
         uses: thedoctor0/zip-release@0.7.6
         with:
           filename: InvenAdClicker-${{ env.VERSION }}.zip
           directory: ./publish
 
       - name: Create Release
+        if: steps.tag_check.outputs.exists == 'true'
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -65,3 +91,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           artifacts: "./publish/InvenAdClicker-${{ env.VERSION }}.zip"
           generateReleaseNotes: true
+
+      - name: Skip since tag was deleted
+        if: steps.tag_check.outputs.exists != 'true'
+        run: echo "Tag was deleted on remote. Skipping release pipeline."
