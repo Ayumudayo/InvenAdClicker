@@ -33,15 +33,12 @@ Set-Content -LiteralPath $csprojPath -Value $content -Encoding UTF8
 git add "$csprojPath"
 git commit -m "build: v$VersionString" | Out-Null
 
-# 현재 브랜치
-$currentBranch = git rev-parse --abbrev-ref HEAD
-
 # 태그(릴리즈 워크플로우 트리거를 위해 v 접두어 사용)
 $tagName = "v$VersionString"
 git tag -a -m "$tagName" $tagName
 
 # 브랜치/태그 동시 푸시
-git push origin $currentBranch $tagName
+git push origin $tagName
 
 Write-Host "완료: $csprojPath의 Version 갱신, 커밋 및 태그($tagName) 푸시됨."
 
