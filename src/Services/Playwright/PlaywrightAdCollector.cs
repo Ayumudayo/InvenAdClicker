@@ -152,7 +152,6 @@ namespace InvenAdClicker.Services.Playwright
                         if (!string.IsNullOrWhiteSpace(extra))
                         {
                             var href = extra.StartsWith("//") ? ("https:" + extra) : extra;
-                            _logger.Debug($"[수집기] postMessage/래핑 수집 링크: {href}");
                             if (IsAllowed(href)) allLinks.Add(href);
                         }
                     }
