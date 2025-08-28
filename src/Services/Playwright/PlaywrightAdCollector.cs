@@ -55,7 +55,8 @@ namespace InvenAdClicker.Services.Playwright
       try{ window.__ad_logs.push('hook installed'); }catch(_){ }
       window.addEventListener('message', function(e){
         try{
-          if(e && e.origin === 'https://zicf.inven.co.kr' && e.data && e.data.clickurl){
+          var hostOk = (function(){ try{ return new URL(e.origin).hostname === 'zicf.inven.co.kr'; }catch(_){ return false; } })();
+          if(e && hostOk && e.data && e.data.clickurl){
             var u = e.data.clickurl; if(u && typeof u === 'string'){ window.__ad_links.push(u); try{ window.__ad_logs.push('pm:'+u); }catch(_){ } }
           }
         }catch(_){ }
@@ -96,7 +97,7 @@ namespace InvenAdClicker.Services.Playwright
                         Timeout = _settings.IframeTimeoutMilliSeconds
                     });
                     // postMessage가 도달할 약간의 여유
-                    await page.WaitForTimeoutAsync(200);
+                    await page.WaitForTimeoutAsync(1000);
                 }
                 catch (TimeoutException)
                 {
