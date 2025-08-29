@@ -58,7 +58,6 @@ jobs:
         run: |
           $required = @(
             '.\\publish\\InvenAdClicker.dll',
-            '.\\publish\\appsettings.json',
             '.\\publish\\playwright.ps1'
           )
           $missing = @()
