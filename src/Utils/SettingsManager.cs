@@ -156,6 +156,8 @@ namespace InvenAdClicker.Utils
                     () => _settings.PageLoadTimeoutMilliseconds, v => _settings.PageLoadTimeoutMilliseconds = v);
                 EnsureMinRuntime(nameof(_settings.CommandTimeoutMilliSeconds), 1000,
                     () => _settings.CommandTimeoutMilliSeconds, v => _settings.CommandTimeoutMilliSeconds = v);
+                EnsureMinRuntime(nameof(_settings.PostMessageBufferMilliseconds), 200,
+                    () => _settings.PostMessageBufferMilliseconds, v => _settings.PostMessageBufferMilliseconds = v);
                 EnsureMinRuntime(nameof(_settings.CollectionAttempts), 1,
                     () => _settings.CollectionAttempts, v => _settings.CollectionAttempts = v);
                 EnsureMinRuntime(nameof(_settings.MaxClickAttempts), 1,

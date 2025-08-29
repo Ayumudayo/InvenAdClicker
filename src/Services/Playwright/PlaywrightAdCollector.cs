@@ -97,7 +97,7 @@ namespace InvenAdClicker.Services.Playwright
                         Timeout = _settings.IframeTimeoutMilliSeconds
                     });
                     // postMessage가 도달할 약간의 여유
-                    await page.WaitForTimeoutAsync(1000);
+                    await page.WaitForTimeoutAsync(_settings.PostMessageBufferMilliseconds);
                 }
                 catch (TimeoutException)
                 {
