@@ -35,6 +35,7 @@ namespace InvenAdClicker
                 {
                     logging.ClearProviders();
                     logging.AddProvider(new RollingFileLoggerProvider());
+                    logging.SetMinimumLevel(LogLevel.Debug);
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
