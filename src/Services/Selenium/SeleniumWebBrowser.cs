@@ -47,28 +47,136 @@ namespace InvenAdClicker.Services.Selenium
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         public async Task LoginAsync(CancellationToken cancellationToken = default)
         {
+            const string loginErrorMessage = "로그인 정보가 일치하지 않습니다.";
+
             _encryption.LoadAndValidateCredentials(out var id, out var pw);
             await Task.Run(() => _driver.Navigate().GoToUrl(_loginUrl), cancellationToken);
 
             var wait = new WebDriverWait(_driver, TimeSpan.FromMilliseconds(_settings.IframeTimeoutMilliSeconds));
 
-            await Task.Run(() => {
+            await Task.Run(() =>
+            {
                 wait.Until(ExpectedConditions.ElementIsVisible(By.Id("user_id"))).SendKeys(id);
                 wait.Until(ExpectedConditions.ElementIsVisible(By.Id("password"))).SendKeys(pw);
                 wait.Until(ExpectedConditions.ElementToBeClickable(By.Id("loginBtn"))).Click();
             }, cancellationToken);
 
+            var loginWait = new WebDriverWait(_driver, TimeSpan.FromMilliseconds(_settings.PageLoadTimeoutMilliseconds));
+
+            string loginState;
             try
             {
-                wait.Until(drv => !drv.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase));
+                loginState = loginWait.Until(driver =>
+                {
+                    var notice = driver.FindElements(By.CssSelector("#notice")).FirstOrDefault();
+                    if (notice != null && notice.Text.Contains(loginErrorMessage, StringComparison.Ordinal))
+                    {
+                        return "invalid_credentials";
+                    }
+
+                    if (!driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return "redirected";
+                    }
+
+                    var modal = driver.FindElements(By.CssSelector(".modal-dialog")).FirstOrDefault();
+                    if (modal != null)
+                    {
+                        return "modal";
+                    }
+
+                    return null;
+                });
             }
-            catch (WebDriverTimeoutException)
+            catch (WebDriverTimeoutException ex)
             {
                 if (_driver.Url.StartsWith(_loginUrl, StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
+                    throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.", ex);
+                }
+
+                throw new ApplicationException("로그인 검증이 시간 초과로 실패했습니다.", ex);
+            }
+
+            if (loginState == "invalid_credentials")
+            {
+                throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
+            }
+
+            if (loginState == "modal")
+            {
+                DismissLoginModal();
+                return;
+            }
+
+            if (loginState == "redirected")
+            {
+                return;
+            }
+
+            throw new ApplicationException("로그인 상태를 판별하지 못했습니다.");
+
+            void DismissLoginModal()
+            {
+                if (TryClick("#btn-ok")) return;
+                if (TryClick(".modal-footer .btn-ok")) return;
+                if (TryClick(".modal-footer button")) return;
+                if (TryClick(".modal-backdrop")) return;
+                if (TryClick(".modal-dialog")) return;
+
+                if (!TryClickBody())
+                {
+                    throw new ApplicationException("로그인 모달을 닫지 못했습니다.");
+                }
+
+                bool TryClick(string cssSelector)
+                {
+                    try
+                    {
+                        var element = _driver.FindElements(By.CssSelector(cssSelector)).FirstOrDefault();
+                        if (element == null)
+                        {
+                            return false;
+                        }
+                        element.Click();
+                        return true;
+                    }
+                    catch (WebDriverException)
+                    {
+                        try
+                        {
+                            ((IJavaScriptExecutor)_driver).ExecuteScript("document.querySelector(arguments[0])?.click();", cssSelector);
+                            return true;
+                        }
+                        catch (WebDriverException)
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                bool TryClickBody()
+                {
+                    try
+                    {
+                        _driver.FindElement(By.TagName("body")).Click();
+                        return true;
+                    }
+                    catch (WebDriverException)
+                    {
+                        try
+                        {
+                            ((IJavaScriptExecutor)_driver).ExecuteScript("document.body.click();");
+                            return true;
+                        }
+                        catch (WebDriverException)
+                        {
+                            return false;
+                        }
+                    }
                 }
             }
+
         }
 
         private int GetDebuggerPort()

@@ -171,38 +171,43 @@ namespace InvenAdClicker.Services.Playwright
             }
         }
 
-        #pragma warning disable CA1416
+#pragma warning disable CA1416
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private async Task LoginAsync(IPage page)
 #pragma warning restore CA1416
         {
             const int maxLoginAttempts = 3;
             const int retryDelayMilliseconds = 2000;
-
+            var loginStateWaitScript = PlaywrightLoginHelper.LoginStateWaitScript;
+            var loginStateEvaluationScript = PlaywrightLoginHelper.LoginStateEvaluationScript;
             _encryption.LoadAndValidateCredentials(out var id, out var pw);
-
             for (int attempt = 1; attempt <= maxLoginAttempts; attempt++)
             {
                 try
                 {
-                    await page.GotoAsync("https://member.inven.co.kr/user/scorpio/mlogin", new PageGotoOptions { Timeout = _settings.PageLoadTimeoutMilliseconds, WaitUntil = WaitUntilState.DOMContentLoaded });
+                    await page.GotoAsync(PlaywrightLoginHelper.LoginUrl, new PageGotoOptions { Timeout = _settings.PageLoadTimeoutMilliseconds, WaitUntil = WaitUntilState.DOMContentLoaded });
                     await page.FillAsync("#user_id", id, new PageFillOptions { Timeout = (float)_settings.CommandTimeoutMilliSeconds });
                     await page.FillAsync("#password", pw, new PageFillOptions { Timeout = (float)_settings.CommandTimeoutMilliSeconds });
                     await page.ClickAsync("#loginBtn", new PageClickOptions { Timeout = (float)_settings.CommandTimeoutMilliSeconds });
 
-                    await page.WaitForFunctionAsync(@"() => {
-                        const notice = document.querySelector('#notice');
-                        return window.location.href !== 'https://member.inven.co.kr/user/scorpio/mlogin' || (notice && notice.textContent.includes('로그인 정보가 일치하지 않습니다.'));
-                    }", new PageWaitForFunctionOptions { Timeout = (float)_settings.PageLoadTimeoutMilliseconds });
+                    await page.WaitForFunctionAsync(loginStateWaitScript, null, new PageWaitForFunctionOptions { Timeout = (float)_settings.PageLoadTimeoutMilliseconds });
+                    var loginState = await page.EvaluateAsync<string>(loginStateEvaluationScript);
 
-                    if (page.Url.Contains("member.inven.co.kr"))
+                    switch (loginState)
                     {
-                        throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
+                        case "invalid_credentials":
+                            throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
+                        case "modal":
+                            await PlaywrightLoginHelper.DismissLoginModalAsync(page, _settings.CommandTimeoutMilliSeconds);
+                            await page.WaitForFunctionAsync($"() => window.location.href !== '{PlaywrightLoginHelper.LoginUrl}'", null, new PageWaitForFunctionOptions { Timeout = (float)_settings.PageLoadTimeoutMilliseconds });
+                            _logger.Info("로그인 성공");
+                            return;
+                        case "redirected":
+                            _logger.Info("로그인 성공");
+                            return;
+                        default:
+                            throw new ApplicationException("로그인 상태를 판별하지 못했습니다.");
                     }
-
-                    // 여기까지 도달했다면 로그인 성공
-                    _logger.Info("로그인 성공");
-                    return;
                 }
                 catch (TimeoutException ex)
                 {
@@ -216,13 +221,12 @@ namespace InvenAdClicker.Services.Playwright
                 }
                 catch (Exception ex)
                 {
-                    // 로그인 중 발생 가능한 기타 예외 처리(예: 페이지 종료 등)
                     _logger.Error($"로그인 {attempt}회차 중 예기치 못한 오류", ex);
-                    throw; // 시간 초과 외 예외는 즉시 throw
+                    throw;
                 }
             }
-        }
 
+        }
         public async ValueTask DisposeAsync()
         {
             await _browser.CloseAsync();

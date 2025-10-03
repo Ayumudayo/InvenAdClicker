@@ -24,26 +24,36 @@ namespace InvenAdClicker.Utils
                 var page = await context.NewPageAsync();
                 int attempts = 0;
                 const int maxLoginAttempts = 3;
+                var loginStateWaitScript = PlaywrightLoginHelper.LoginStateWaitScript;
+                var loginStateEvaluationScript = PlaywrightLoginHelper.LoginStateEvaluationScript;
                 while (true)
                 {
                     attempts++;
                     try
                     {
-                        await page.GotoAsync("https://member.inven.co.kr/user/scorpio/mlogin", new PageGotoOptions { Timeout = settings.PageLoadTimeoutMilliseconds, WaitUntil = WaitUntilState.DOMContentLoaded });
+                        await page.GotoAsync(PlaywrightLoginHelper.LoginUrl, new PageGotoOptions { Timeout = settings.PageLoadTimeoutMilliseconds, WaitUntil = WaitUntilState.DOMContentLoaded });
                         await page.FillAsync("#user_id", id, new PageFillOptions { Timeout = (float)settings.CommandTimeoutMilliSeconds });
                         await page.FillAsync("#password", pw, new PageFillOptions { Timeout = (float)settings.CommandTimeoutMilliSeconds });
                         await page.ClickAsync("#loginBtn", new PageClickOptions { Timeout = (float)settings.CommandTimeoutMilliSeconds });
 
-                        await page.WaitForFunctionAsync(@"() => {
-                            const notice = document.querySelector('#notice');
-                            return window.location.href !== 'https://member.inven.co.kr/user/scorpio/mlogin' || (notice && notice.textContent.includes('로그인 정보가 일치하지 않습니다.'));
-                        }", new PageWaitForFunctionOptions { Timeout = (float)settings.PageLoadTimeoutMilliseconds });
+                        await page.WaitForFunctionAsync(loginStateWaitScript, null, new PageWaitForFunctionOptions { Timeout = (float)settings.PageLoadTimeoutMilliseconds });
+                        var loginState = await page.EvaluateAsync<string>(loginStateEvaluationScript);
 
-                        if (page.Url.Contains("member.inven.co.kr"))
-                            throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
-
-                        logger.Info("로그인 검증 성공");
-                        break;
+                        switch (loginState)
+                        {
+                            case "invalid_credentials":
+                                throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
+                            case "modal":
+                                await PlaywrightLoginHelper.DismissLoginModalAsync(page, settings.CommandTimeoutMilliSeconds);
+                                await page.WaitForFunctionAsync($"() => window.location.href !== '{PlaywrightLoginHelper.LoginUrl}'", null, new PageWaitForFunctionOptions { Timeout = (float)settings.PageLoadTimeoutMilliseconds });
+                                logger.Info("로그인 검증 성공");
+                                return;
+                            case "redirected":
+                                logger.Info("로그인 검증 성공");
+                                return;
+                            default:
+                                throw new ApplicationException("로그인 상태를 판별하지 못했습니다.");
+                        }
                     }
                     catch (TimeoutException ex)
                     {
@@ -60,6 +70,8 @@ namespace InvenAdClicker.Utils
             {
                 await context.CloseAsync();
             }
+
+
         }
 
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -79,4 +91,3 @@ namespace InvenAdClicker.Utils
         }
     }
 }
-
