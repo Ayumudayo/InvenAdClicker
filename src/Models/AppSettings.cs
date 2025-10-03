@@ -19,6 +19,5 @@ namespace InvenAdClicker.Models
             "https://m.inven.co.kr/",
             "https://it.inven.co.kr/",
         };
-        public string BrowserType { get; set; } = "Playwright"; // "Selenium" or "Playwright"
     }
 }

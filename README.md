@@ -11,7 +11,6 @@
 - **자동 로그인/보안 저장**: 최초 1회 계정 정보를 입력하면 로컬에 암호화 저장하고 이후 자동 로그인.
 - **수집-클릭 파이프라인**: 링크 수집을 우선하나, 수집이 끝날 때 까지 대기하지 않고 노는 워커 없이 클릭을 동시에 처리합니다.
 - **병렬 처리/최적화**: `MaxDegreeOfParallelism` 설정에 따라 여러 작업을 동시에 처리하며, 불필요한 리소스(이미지, CSS 등)를 차단하여 리소스를 절약합니다.
-- **엔진 선택**: `appsettings.json` 파일에서 `BrowserType`을 `Selenium` 또는 `Playwright`로 간단히 변경하여 사용 가능합니다. 지금은 둘 다 지원하지만 나중에 Selenium이 사라질 수 있습니다.
 - **실시간 진행률**: URL 별 작업 상태를 실시간으로 콘솔에 표시합니다.
 
 ## 사용법
@@ -20,7 +19,7 @@
 
 - **공통**: Windows 운영체제와 Google Chrome 최신 버전이 설치되어 있어야 합니다.
 - **.NET 런타임**: [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)이 설치되어 있어야 합니다.
-- **Playwright 사용 시**: `BrowserType`을 `Playwright`로 설정한 경우, **최초 1회** 터미널(PowerShell 또는 CMD)에서 아래 명령어를 실행해 드라이버를 설치해야 합니다.
+- **Playwright 설치**: **최초 1회** PowerShell(또는 CMD)에서 아래 명령어를 실행해 런타임을 설치합니다.
   ```shell
   pwsh -c "playwright install"
   ```
@@ -48,14 +47,12 @@
     "DisableImages": true,
     "DisableCss": true,
     "DisableFonts": true,
-    "BrowserType": "Playwright",
     "TargetUrls": [
         "링크들"
     ]
   }
 }
 ```
-- `BrowserType`: `Playwright` (권장) 또는 `Selenium` 중에서 선택합니다.
 - `TargetUrls`: 광고를 수집하고 클릭할 페이지 URL 목록입니다.
 - `MaxDegreeOfParallelism`: 동시에 실행할 작업의 수입니다.
 - `ClickDelayMilliseconds`: 광고 클릭 후 대기 시간 (밀리초) 입니다.

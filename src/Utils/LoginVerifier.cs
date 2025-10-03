@@ -70,24 +70,6 @@ namespace InvenAdClicker.Utils
             {
                 await context.CloseAsync();
             }
-
-
-        }
-
-        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-        public static async Task VerifySeleniumAsync(AppSettings settings, IAppLogger logger, Encryption encryption, CancellationToken cancellationToken)
-        {
-            // SeleniumWebBrowser는 생성자에서 드라이버를 띄우고 LoginAsync에서 로그인하므로 이를 재사용
-            var browser = new Services.Selenium.SeleniumWebBrowser(settings, logger, encryption);
-            try
-            {
-                await browser.LoginAsync(cancellationToken);
-                logger.Info("로그인 검증 성공");
-            }
-            finally
-            {
-                browser.Dispose();
-            }
         }
     }
 }

@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
 using InvenAdClicker.Services.Playwright;
-using InvenAdClicker.Services.Selenium;
 using InvenAdClicker.Services.Pipeline;
 
 namespace InvenAdClicker
@@ -64,42 +63,26 @@ namespace InvenAdClicker
             {
                 Console.WriteLine("계정 유효성 검증 및 브라우저 서비스 초기화 중...");
 
-                IPipelineRunner runner;
-
-                // 로그인 검증 선행: 자격증명이 없거나 로그인 실패 시 이후 단계로 진행하지 않음
-                // 브라우저 타입에 맞춰 1회 검증 후 풀/파이프라인 구성
-                if (settings.BrowserType.Equals("Playwright", StringComparison.OrdinalIgnoreCase))
+                // 로그인 전 검증: 자격증명이 없거나 로그인 실패 시 이후 단계로 진행하지 않음
+                // Playwright 엔진을 기준으로 한 번만 검증한 뒤 풀/파이프라인을 구성
+                if (await PlaywrightBootstrap.EnsureInstalledIfMissingAsync(logger))
                 {
-                    // 실행 환경에서 Playwright 브라우저 미설치 시 자동 설치 후 재시작 안내
-                    if (await PlaywrightBootstrap.EnsureInstalledIfMissingAsync(logger))
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine("Playwright 브라우저를 설치했습니다. 프로그램을 종료한 뒤 다시 시작해 주세요.");
-                        Console.WriteLine("아무 키나 누르면 종료합니다...");
-                        Console.ReadKey();
-                        return; // 이후 단계 진행 중단
-                    }
-
-                    var playwright = await Playwright.CreateAsync();
-                    var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
-                    await LoginVerifier.VerifyPlaywrightAsync(browser, settings, logger, encryption, cts.Token);
-                    var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
-                    await playwrightPool.InitializePoolAsync(cts.Token);
-
-                    IAdCollector<IPage> adCollector = new PlaywrightAdCollector(settings, logger);
-                    IAdClicker<IPage> adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
-                    runner = new GenericPipelineRunner<IPage>(settings, logger, playwrightPool, progress, adCollector, adClicker);
+                    Console.WriteLine();
+                    Console.WriteLine("Playwright 런타임을 설치했습니다. 프로그램을 종료한 뒤 다시 시작해 주세요.");
+                    Console.WriteLine("아무 키나 누르면 종료합니다...");
+                    Console.ReadKey();
+                    return;
                 }
-                else
-                {
-                    await LoginVerifier.VerifySeleniumAsync(settings, logger, encryption, cts.Token);
-                    var browserPool = new BrowserPool(settings, logger, encryption);
-                    await browserPool.InitializePoolAsync(cts.Token);
 
-                    IAdCollector<SeleniumWebBrowser> adCollector = new SeleniumAdCollector(settings, logger);
-                    IAdClicker<SeleniumWebBrowser> adClicker = new SeleniumAdClicker(settings, logger);
-                    runner = new GenericPipelineRunner<SeleniumWebBrowser>(settings, logger, browserPool, progress, adCollector, adClicker);
-                }
+                using var playwright = await Playwright.CreateAsync();
+                await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+                await LoginVerifier.VerifyPlaywrightAsync(browser, settings, logger, encryption, cts.Token);
+                await using var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
+                await playwrightPool.InitializePoolAsync(cts.Token);
+
+                IAdCollector<IPage> adCollector = new PlaywrightAdCollector(settings, logger);
+                IAdClicker<IPage> adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
+                var runner = new GenericPipelineRunner<IPage>(settings, logger, playwrightPool, progress, adCollector, adClicker);
                 
                 Console.WriteLine("초기화 성공. 프로세스를 시작합니다...");
                 Thread.Sleep(1000); // 안내 메시지를 읽을 시간을 잠시 부여
