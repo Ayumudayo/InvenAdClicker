@@ -59,9 +59,14 @@
 - `MaxDegreeOfParallelism`: 동시에 실행할 작업 수입니다.
 - `ClickDelayMilliseconds`: 동일 URL에서 연속 클릭 사이의 대기 시간(밀리초)입니다.
 - `PageLoadTimeoutMilliseconds`: 페이지 로드 타임아웃입니다. 네트워크가 느리다면 값을 올려주세요.
+- `CommandTimeoutMilliSeconds`: Playwright 명령 타임아웃 최대 대기 시간입니다.
+- `CollectionAttempts` / `MaxClickAttempts`: 수집·클릭 재시도 횟수입니다.
+- `TargetUrls`: 수집/클릭을 진행할 URL 목록입니다.
+
+#### 디버그 옵션
+
 - `PlaywrightHeadless`: `false`로 설정하면 디버깅을 위해 실제 브라우저 창을 띄울 수 있습니다.
 - `PlaywrightJavaScriptEnabled`: Playwright 컨텍스트의 JavaScript 실행 여부를 제어합니다.
-- `TargetUrls`: 수집/클릭을 진행할 URL 목록입니다.
 
 ### 3. 실행
 
