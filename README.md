@@ -8,10 +8,11 @@
 
 ## 주요 기능
 
-- **자동 로그인/보안 저장**: 최초 1회 계정 정보를 입력하면 로컬에 암호화 저장하고 이후 자동 로그인.
-- **수집-클릭 파이프라인**: 링크 수집을 우선하나, 수집이 끝날 때 까지 대기하지 않고 노는 워커 없이 클릭을 동시에 처리합니다.
-- **병렬 처리/최적화**: `MaxDegreeOfParallelism` 설정에 따라 여러 작업을 동시에 처리하며, 불필요한 리소스(이미지, CSS 등)를 차단하여 리소스를 절약합니다.
-- **실시간 진행률**: URL 별 작업 상태를 실시간으로 콘솔에 표시합니다.
+- **자동 로그인·보안 저장**: 최초 1회 입력한 계정 정보를 암호화해 다음 실행부터 자동 로그인합니다.
+- **광고 큐 기반 자동 클릭**: 수집된 광고 링크를 큐로 관리해 다음 클릭을 지연 없이 실행합니다.
+- **네트워크 부하 최소화**: Playwright 라우팅으로 불필요한 리소스를 차단해 실행 속도를 높입니다.
+- **디버깅 옵션**: `PlaywrightHeadless`, `PlaywrightJavaScriptEnabled` 값으로 브라우저 창과 JavaScript 실행 여부를 제어할 수 있습니다.
+- **실시간 진행 상황**: URL별 수집·클릭 현황을 콘솔에서 즉시 확인할 수 있습니다.
 
 ## 사용법
 
@@ -32,7 +33,7 @@
 
 ### 2. 설정 (`appsettings.json`)
 
-실행 파일 옆의 `appsettings.json` 파일을 열어 필요에 맞게 수정합니다.
+기본 설정은 다음과 같습니다.
 
 ```json
 {
@@ -44,19 +45,23 @@
     "CommandTimeoutMilliSeconds": 5000,
     "CollectionAttempts": 1,
     "MaxClickAttempts": 2,
-    "DisableImages": true,
-    "DisableCss": true,
-    "DisableFonts": true,
+    "PlaywrightHeadless": true,
+    "PlaywrightJavaScriptEnabled": true,
     "TargetUrls": [
-        "링크들"
+      "https://www.inven.co.kr/",
+      "https://m.inven.co.kr/",
+      "https://it.inven.co.kr/"
     ]
   }
 }
 ```
-- `TargetUrls`: 광고를 수집하고 클릭할 페이지 URL 목록입니다.
-- `MaxDegreeOfParallelism`: 동시에 실행할 작업의 수입니다.
-- `ClickDelayMilliseconds`: 광고 클릭 후 대기 시간 (밀리초) 입니다.
-- `PageLoadTimeoutMilliseconds`: 페이지 로딩 대기 시간입니다. 네트워크가 불안정하면 값을 늘리세요.
+
+- `MaxDegreeOfParallelism`: 동시에 실행할 작업 수입니다.
+- `ClickDelayMilliseconds`: 동일 URL에서 연속 클릭 사이의 대기 시간(밀리초)입니다.
+- `PageLoadTimeoutMilliseconds`: 페이지 로드 타임아웃입니다. 네트워크가 느리다면 값을 올려주세요.
+- `PlaywrightHeadless`: `false`로 설정하면 디버깅을 위해 실제 브라우저 창을 띄울 수 있습니다.
+- `PlaywrightJavaScriptEnabled`: Playwright 컨텍스트의 JavaScript 실행 여부를 제어합니다.
+- `TargetUrls`: 수집/클릭을 진행할 URL 목록입니다.
 
 ### 3. 실행
 

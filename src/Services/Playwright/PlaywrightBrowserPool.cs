@@ -45,7 +45,8 @@ namespace InvenAdClicker.Services.Playwright
         {
             var context = await _browser.NewContextAsync(new BrowserNewContextOptions
             {
-                ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders
+                ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders,
+                JavaScriptEnabled = _settings.PlaywrightJavaScriptEnabled
             });
             var page = await context.NewPageAsync();
 
@@ -55,21 +56,7 @@ namespace InvenAdClicker.Services.Playwright
                 var resourceType = route.Request.ResourceType;
                 bool shouldContinue = false;
 
-                // 핵심 리소스: 항상 허용
                 if (resourceType == "document" || resourceType == "script" || resourceType == "xhr" || resourceType == "fetch")
-                {
-                    shouldContinue = true;
-                }
-                // 설정 기반으로 이미지/CSS/폰트 허용 여부 제어
-                else if (resourceType == "image" && !_settings.DisableImages)
-                {
-                    shouldContinue = true;
-                }
-                else if (resourceType == "stylesheet" && !_settings.DisableCss)
-                {
-                    shouldContinue = true;
-                }
-                else if (resourceType == "font" && !_settings.DisableFonts)
                 {
                     shouldContinue = true;
                 }

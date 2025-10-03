@@ -10,9 +10,8 @@ namespace InvenAdClicker.Models
         public int PostMessageBufferMilliseconds { get; set; } = 1000;
         public int CollectionAttempts { get; set; } = 1;
         public int MaxClickAttempts { get; set; } = 2;
-        public bool DisableImages { get; set; } = true;
-        public bool DisableCss { get; set; } = true;
-        public bool DisableFonts { get; set; } = true;
+        public bool PlaywrightHeadless { get; set; } = true;
+        public bool PlaywrightJavaScriptEnabled { get; set; } = true;
         public string[]? TargetUrls { get; set; } = new[]
         {
             "https://www.inven.co.kr/",

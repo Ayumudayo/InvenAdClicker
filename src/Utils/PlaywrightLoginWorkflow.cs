@@ -11,11 +11,12 @@ namespace InvenAdClicker.Utils
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         public static async Task<IPage> CreateAndLoginAsync(IBrowser browser, AppSettings settings, Encryption encryption, CancellationToken cancellationToken)
         {
-            PlaywrightLoginHelper.LoadCredentials(encryption, out var id, out var pw);
+            encryption.LoadAndValidateCredentials(out var id, out var pw);
 
             var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
-                ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders
+                ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders,
+                JavaScriptEnabled = settings.PlaywrightJavaScriptEnabled
             });
             var page = await context.NewPageAsync();
             try
@@ -33,7 +34,7 @@ namespace InvenAdClicker.Utils
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         public static async Task LoginAsync(IPage page, AppSettings settings, Encryption encryption, CancellationToken cancellationToken)
         {
-            PlaywrightLoginHelper.LoadCredentials(encryption, out var id, out var pw);
+            encryption.LoadAndValidateCredentials(out var id, out var pw);
             await LoginAsync(page, settings, id, pw, cancellationToken);
         }
 
