@@ -1,5 +1,6 @@
 using Microsoft.Playwright;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace InvenAdClicker.Utils
@@ -9,7 +10,14 @@ namespace InvenAdClicker.Utils
         internal const string LoginUrl = "https://member.inven.co.kr/user/scorpio/mlogin";
         internal const string LoginErrorMessage = "로그인 정보가 일치하지 않습니다.";
 
-        private static readonly string EscapedLoginErrorMessage = LoginErrorMessage.Replace("'", "\\'");
+        internal static readonly string EscapedLoginErrorMessage = LoginErrorMessage.Replace("'", "\\'");
+        internal static readonly KeyValuePair<string, string>[] AcceptLanguageHeaders =
+        {
+            new("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8")
+        };
+
+        internal static void LoadCredentials(Encryption encryption, out string id, out string password) =>
+            encryption.LoadAndValidateCredentials(out id, out password);
 
         internal static readonly string LoginStateWaitScript = $@"() => {{
             const notice = document.querySelector('#notice');

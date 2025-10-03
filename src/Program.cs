@@ -85,7 +85,7 @@ namespace InvenAdClicker
                 var runner = new GenericPipelineRunner<IPage>(settings, logger, playwrightPool, progress, adCollector, adClicker);
                 
                 Console.WriteLine("초기화 성공. 프로세스를 시작합니다...");
-                Thread.Sleep(1000); // 안내 메시지를 읽을 시간을 잠시 부여
+                await Task.Delay(1000, cts.Token); // 안내 메시지를 읽을 시간을 잠시 부여
 
                 Console.CursorVisible = false;
                 Console.Clear();
