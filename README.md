@@ -11,7 +11,7 @@
 - **자동 로그인·보안 저장**: 최초 1회 입력한 계정 정보를 암호화해 다음 실행부터 자동 로그인합니다.
 - **광고 큐 기반 자동 클릭**: 수집된 광고 링크를 큐로 관리해 다음 클릭을 지연 없이 실행합니다.
 - **네트워크 부하 최소화**: Playwright 라우팅으로 불필요한 리소스를 차단해 실행 속도를 높입니다.
-- **디버깅 옵션**: `PlaywrightHeadless`, `PlaywrightJavaScriptEnabled` 값으로 브라우저 창과 JavaScript 실행 여부를 제어할 수 있습니다.
+- **디버깅 옵션**: `Debug.Headless`, `Debug.JavaScriptEnabled` 값으로 브라우저 창과 JavaScript 실행 여부를 제어할 수 있습니다.
 - **실시간 진행 상황**: URL별 수집·클릭 현황을 콘솔에서 즉시 확인할 수 있습니다.
 
 ## 사용법
@@ -65,8 +65,8 @@
 
 #### 디버그 옵션
 
-- `PlaywrightHeadless`: `false`로 설정하면 디버깅을 위해 실제 브라우저 창을 띄울 수 있습니다.
-- `PlaywrightJavaScriptEnabled`: Playwright 컨텍스트의 JavaScript 실행 여부를 제어합니다.
+- `Debug.Headless`: `false`로 설정하면 디버깅을 위해 실제 브라우저 창을 띄울 수 있습니다.
+- `Debug.JavaScriptEnabled`: Playwright 컨텍스트의 JavaScript 실행 여부를 제어합니다.
 
 ### 3. 실행
 

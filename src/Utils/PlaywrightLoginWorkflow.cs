@@ -16,7 +16,7 @@ namespace InvenAdClicker.Utils
             var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders,
-                JavaScriptEnabled = settings.PlaywrightJavaScriptEnabled
+                JavaScriptEnabled = settings.Debug.JavaScriptEnabled
             });
             var page = await context.NewPageAsync();
             try
