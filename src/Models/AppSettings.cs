@@ -4,8 +4,12 @@ namespace InvenAdClicker.Models
 {
     public class PlaywrightDebugOptions
     {
+        public bool Enabled { get; set; } = false;
         public bool Headless { get; set; } = true;
         public bool JavaScriptEnabled { get; set; } = true;
+        public bool AllowImages { get; set; } = false;
+        public bool AllowStylesheets { get; set; } = false;
+        public bool AllowFonts { get; set; } = false;
     }
 
     public class AppSettings

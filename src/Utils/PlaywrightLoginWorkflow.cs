@@ -13,11 +13,12 @@ namespace InvenAdClicker.Utils
         {
             encryption.LoadAndValidateCredentials(out var id, out var pw);
 
-            var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            var contextOptions = new BrowserNewContextOptions
             {
                 ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders,
-                JavaScriptEnabled = settings.Debug.JavaScriptEnabled
-            });
+                JavaScriptEnabled = settings.Debug.Enabled ? settings.Debug.JavaScriptEnabled : true
+            };
+            var context = await browser.NewContextAsync(contextOptions);
             var page = await context.NewPageAsync();
             try
             {

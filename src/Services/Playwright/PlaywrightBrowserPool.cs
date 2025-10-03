@@ -43,14 +43,14 @@ namespace InvenAdClicker.Services.Playwright
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private async Task<IPage> CreatePageAsync(CancellationToken cancellationToken)
         {
-            var context = await _browser.NewContextAsync(new BrowserNewContextOptions
+            var contextOptions = new BrowserNewContextOptions
             {
                 ExtraHTTPHeaders = PlaywrightLoginHelper.AcceptLanguageHeaders,
-                JavaScriptEnabled = _settings.Debug.JavaScriptEnabled
-            });
+                JavaScriptEnabled = _settings.Debug.Enabled ? _settings.Debug.JavaScriptEnabled : true
+            };
+            var context = await _browser.NewContextAsync(contextOptions);
             var page = await context.NewPageAsync();
 
-            // 불필요한 리소스를 차단(네트워크 비용 절감)
             await page.RouteAsync("**/*", async route =>
             {
                 var resourceType = route.Request.ResourceType;
@@ -59,6 +59,16 @@ namespace InvenAdClicker.Services.Playwright
                 if (resourceType == "document" || resourceType == "script" || resourceType == "xhr" || resourceType == "fetch")
                 {
                     shouldContinue = true;
+                }
+                else if (_settings.Debug.Enabled)
+                {
+                    shouldContinue = resourceType switch
+                    {
+                        "image" => _settings.Debug.AllowImages,
+                        "stylesheet" => _settings.Debug.AllowStylesheets,
+                        "font" => _settings.Debug.AllowFonts,
+                        _ => false
+                    };
                 }
 
                 if (shouldContinue)

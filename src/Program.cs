@@ -75,7 +75,11 @@ namespace InvenAdClicker
                 }
 
                 using var playwright = await Playwright.CreateAsync();
-                await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = settings.Debug.Headless });
+                var launchOptions = new BrowserTypeLaunchOptions
+                {
+                    Headless = settings.Debug.Enabled ? settings.Debug.Headless : true
+                };
+                await using var browser = await playwright.Chromium.LaunchAsync(launchOptions);
                 await LoginVerifier.VerifyPlaywrightAsync(browser, settings, logger, encryption, cts.Token);
                 await using var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
                 await playwrightPool.InitializePoolAsync(cts.Token);
