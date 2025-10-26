@@ -1,5 +1,17 @@
+using System.Collections.Generic;
+
 namespace InvenAdClicker.Models
 {
+    public class PlaywrightDebugOptions
+    {
+        public bool Enabled { get; set; } = false;
+        public bool Headless { get; set; } = true;
+        public bool JavaScriptEnabled { get; set; } = true;
+        public bool AllowImages { get; set; } = false;
+        public bool AllowStylesheets { get; set; } = false;
+        public bool AllowFonts { get; set; } = false;
+    }
+
     public class AppSettings
     {
         public int MaxDegreeOfParallelism { get; set; } = 3;
@@ -10,15 +22,12 @@ namespace InvenAdClicker.Models
         public int PostMessageBufferMilliseconds { get; set; } = 1000;
         public int CollectionAttempts { get; set; } = 1;
         public int MaxClickAttempts { get; set; } = 2;
-        public bool DisableImages { get; set; } = true;
-        public bool DisableCss { get; set; } = true;
-        public bool DisableFonts { get; set; } = true;
-        public string[]? TargetUrls { get; set; } = new[]
+        public PlaywrightDebugOptions Debug { get; set; } = new();
+        public string[] TargetUrls { get; set; } = new[]
         {
             "https://www.inven.co.kr/",
             "https://m.inven.co.kr/",
-            "https://it.inven.co.kr/",
+            "https://it.inven.co.kr/"
         };
-        public string BrowserType { get; set; } = "Playwright"; // "Selenium" or "Playwright"
     }
 }
