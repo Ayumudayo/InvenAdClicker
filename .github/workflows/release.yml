@@ -50,7 +50,7 @@ jobs:
 
       - name: Publish
         if: steps.tag_check.outputs.exists == 'true'
-        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish /p:Version=${{ env.VERSION }}
+        run: dotnet publish InvenAdClicker.csproj -c Release -o ./publish /p:Version=${{ env.VERSION }}
 
       - name: Verify publish assets exist
         if: steps.tag_check.outputs.exists == 'true'
