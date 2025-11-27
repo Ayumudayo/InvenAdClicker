@@ -22,6 +22,13 @@ namespace InvenAdClicker.Services.Playwright
 
         public async Task<IPage> ClickAdAsync(IPage page, string link, CancellationToken cancellationToken)
         {
+            if (_settings.DryRun)
+            {
+                _logger.Info($"[DryRun] 클릭 시뮬레이션 (실제 클릭 안 함): {link}");
+                await Task.Delay(100, cancellationToken);
+                return page;
+            }
+
             for (int i = 0; i < _settings.MaxClickAttempts; i++)
             {
                 try

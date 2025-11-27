@@ -169,9 +169,31 @@ namespace InvenAdClicker.Utils
                     throw new ApplicationException(msg);
                 }
 
+                if (_settings.MaxDegreeOfParallelism > 10)
+                {
+                    _logger.Warn($"AppSettings.MaxDegreeOfParallelism 값 {_settings.MaxDegreeOfParallelism}이 너무 커서 10으로 제한합니다.");
+                    _settings.MaxDegreeOfParallelism = 10;
+                }
+
                 if ((_settings.TargetUrls == null) || _settings.TargetUrls.Length == 0)
                 {
                     _logger.Warn("AppSettings.TargetUrls가 비어 있습니다. 수행할 작업이 없습니다.");
+                }
+                else
+                {
+                    var validUrls = new System.Collections.Generic.List<string>();
+                    foreach (var url in _settings.TargetUrls)
+                    {
+                        if (Uri.TryCreate(url, UriKind.Absolute, out _))
+                        {
+                            validUrls.Add(url);
+                        }
+                        else
+                        {
+                            _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {url}");
+                        }
+                    }
+                    _settings.TargetUrls = validUrls.ToArray();
                 }
 
                 if (changed)
