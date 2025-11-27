@@ -52,7 +52,7 @@ jobs:
         run: |
           $testProjects = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { (Select-String -Path $_.FullName -Pattern '<PackageReference Include="(xunit|nunit|MSTest)"' -Quiet) }
           if ($testProjects) {
-            dotnet test InvenAdClicker.sln --no-build --verbosity normal
+            dotnet test InvenAdClicker.sln --no-build --configuration Release --verbosity normal
           } else {
             Write-Host 'No test projects found. Skipping dotnet test.'
           }
