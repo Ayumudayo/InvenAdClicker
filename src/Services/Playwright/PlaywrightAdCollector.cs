@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using InvenAdClicker.Services.Interfaces;
+using InvenAdClicker.Utils;
 
 namespace InvenAdClicker.Services.Playwright
 {
@@ -22,7 +23,6 @@ namespace InvenAdClicker.Services.Playwright
 
         public async Task<List<string>> CollectLinksAsync(IPage page, string url, CancellationToken cancellationToken)
         {
-            const string ActualAdLinkPrefix = "https://zicf.inven.co.kr/RealMedia";
             var allLinks = new HashSet<string>();
             bool IsAllowed(string value) => Utils.AdAllowList.IsAllowed(value);
             // 페이지 콘솔 로그 중 우리 태그만 브리징(노이즈 억제)
@@ -33,9 +33,9 @@ namespace InvenAdClicker.Services.Playwright
                     try
                     {
                         var text = msg.Text ?? string.Empty;
-                        if (text.Contains("[InvenAdClicker]"))
+                        if (text.Contains(Constants.InvenAdClickerLogPrefix))
                         {
-                            _logger.Info($"[PW Console] {text}");
+                            _logger.Info($"{Constants.PlaywrightConsoleLogPrefix} {text}");
                         }
                     }
                     catch { }
@@ -174,7 +174,7 @@ namespace InvenAdClicker.Services.Playwright
             }
             
             // 필터링
-            var result = allLinks.Where(l => !string.IsNullOrEmpty(l) && l.StartsWith(ActualAdLinkPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            var result = allLinks.Where(l => !string.IsNullOrEmpty(l) && l.StartsWith(Constants.ActualAdLinkPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
             _logger.Info($"[수집기] 최종 링크: {result.Count} / 전체 {allLinks.Count}");
             if (result.Count == 0)
             {

@@ -63,7 +63,7 @@ namespace InvenAdClicker.Utils
             {
                 byte[] encrypted = File.ReadAllBytes(CredentialFile);
                 byte[] decrypted = ProtectedData.Unprotect(
-                    encrypted, null, DataProtectionScope.LocalMachine);
+                    encrypted, null, DataProtectionScope.CurrentUser);
 
                 string txt = Encoding.UTF8.GetString(decrypted);
                 var parts = txt.Split(new[] { ':' }, 2);
@@ -88,7 +88,7 @@ namespace InvenAdClicker.Utils
             string txt = $"{id}:{pw}";
             byte[] plain = Encoding.UTF8.GetBytes(txt);
             byte[] encrypted = ProtectedData.Protect(
-                plain, null, DataProtectionScope.LocalMachine);
+                plain, null, DataProtectionScope.CurrentUser);
 
             File.WriteAllBytes(CredentialFile, encrypted);
         }
