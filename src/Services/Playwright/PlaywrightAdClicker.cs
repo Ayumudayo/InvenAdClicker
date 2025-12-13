@@ -35,7 +35,7 @@ namespace InvenAdClicker.Services.Playwright
                 {
                     await page.GotoAsync(link, new PageGotoOptions
                     {
-                        WaitUntil = WaitUntilState.DOMContentLoaded,
+                        WaitUntil = WaitUntilState.Commit, // Commit으로 변경: 페이지 로딩 완료 대기 안 함
                         Timeout = _settings.PageLoadTimeoutMilliseconds
                     });
                     await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
