@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System;
 
 namespace InvenAdClicker.Models
 {
@@ -24,11 +24,6 @@ namespace InvenAdClicker.Models
         public int CollectionAttempts { get; set; } = 1;
         public int MaxClickAttempts { get; set; } = 2;
         public PlaywrightDebugOptions Debug { get; set; } = new();
-        public string[] TargetUrls { get; set; } = new[]
-        {
-            "https://www.inven.co.kr/",
-            "https://m.inven.co.kr/",
-            "https://it.inven.co.kr/"
-        };
+        public string[] TargetUrls { get; set; } = Array.Empty<string>();
     }
 }

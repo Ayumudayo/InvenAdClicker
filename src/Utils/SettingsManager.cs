@@ -26,7 +26,17 @@ namespace InvenAdClicker.Utils
         {
             try
             {
-                var defaultTemplate = new AppSettings();
+                var defaultTemplate = new AppSettings
+                {
+                    // Keep default URLs in the generated file as a starting point.
+                    // (Runtime binding uses AppSettings.TargetUrls default empty to avoid unintended merging/duplication.)
+                    TargetUrls = new[]
+                    {
+                        "https://www.inven.co.kr/",
+                        "https://m.inven.co.kr/",
+                        "https://it.inven.co.kr/"
+                    }
+                };
 
                 JsonObject BuildDefaultAppNode() => BuildCanonicalObject(typeof(AppSettings), existing: null, template: defaultTemplate);
 
@@ -156,16 +166,38 @@ namespace InvenAdClicker.Utils
                 else
                 {
                     var validUrls = new System.Collections.Generic.List<string>();
+                    var seen = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                    var duplicates = new System.Collections.Generic.List<string>();
                     foreach (var url in _settings.TargetUrls)
                     {
-                        if (Uri.TryCreate(url, UriKind.Absolute, out _))
+                        var trimmed = url?.Trim();
+                        if (string.IsNullOrWhiteSpace(trimmed))
                         {
-                            validUrls.Add(url);
+                            continue;
+                        }
+
+                        if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+                        {
+                            if (seen.Add(trimmed))
+                            {
+                                validUrls.Add(trimmed);
+                            }
+                            else
+                            {
+                                duplicates.Add(trimmed);
+                            }
                         }
                         else
                         {
-                            _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {url}");
+                            _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {trimmed}");
                         }
+                    }
+
+                    if (duplicates.Count > 0)
+                    {
+                        var uniqueDups = duplicates.Distinct(StringComparer.Ordinal).Take(5).ToArray();
+                        var sample = uniqueDups.Length > 0 ? string.Join(", ", uniqueDups) : "-";
+                        _logger.Warn($"중복 URL {duplicates.Count}개를 런타임에서 제외했습니다.(파일 미변경) 예: {sample}");
                     }
                     _settings.TargetUrls = validUrls.ToArray();
                 }
