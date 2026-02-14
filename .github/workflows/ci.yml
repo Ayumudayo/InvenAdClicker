@@ -5,41 +5,24 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: windows-latest
-    outputs:
-      code_changed: ${{ steps.set_outputs.outputs.code_changed }}
-      docs_changed: ${{ steps.set_outputs.outputs.docs_changed }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 모든 커밋을 fetch
-
-      - name: Filter code & docs changes
-        id: filter
-        uses: dorny/paths-filter@v2
-        continue-on-error: true
-        with:
-          filters: |
-            code:
-              - '**/*.cs'
-              - '**/*.sln'
-              - '**/*.csproj'
-            docs:
-              - 'README.md'
-              - 'LICENSE'
-          token: ${{ secrets.GITHUB_TOKEN }} # PR 변경 감지
-          list-files: 'none' # 파일 목록 생략, true/false 출력
-
-      - name: Set job outputs
-        id: set_outputs
-        run: |
-          echo "code_changed=${{ steps.filter.outputs.code || 'false' }}" >> $GITHUB_OUTPUT
-          echo "docs_changed=${{ steps.filter.outputs.docs || 'false' }}" >> $GITHUB_OUTPUT
+          fetch-depth: 1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
         run: dotnet restore InvenAdClicker.sln
@@ -52,13 +35,13 @@ jobs:
         run: |
           $testProjects = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { (Select-String -Path $_.FullName -Pattern '<PackageReference Include="(xunit|nunit|MSTest)"' -Quiet) }
           if ($testProjects) {
-            dotnet test InvenAdClicker.sln --no-build --configuration Release --verbosity normal
+            dotnet test InvenAdClicker.sln --no-build --no-restore --configuration Release --verbosity normal
           } else {
             Write-Host 'No test projects found. Skipping dotnet test.'
           }
 
       - name: Publish (Release)
-        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish
+        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish --no-build --no-restore
 
       - uses: actions/upload-artifact@v4
         with:
