@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 
 namespace InvenAdClicker.Utils
@@ -27,12 +28,10 @@ namespace InvenAdClicker.Utils
         public int Errors { get; set; } = 0;
         public int Threads { get; set; } = 0;
 
-        // 진행표시 강화용 타임스탬프(속도/ETA 계산용)
         public DateTime? FirstUpdateUtc { get; set; }
         public DateTime? FirstClickUtc { get; set; }
         public DateTime? LastUpdateUtc { get; set; }
 
-        // Finished 시점의 cps(클릭/초)를 고정 보관
         public double? CompletedCps { get; set; }
     }
 
@@ -45,6 +44,9 @@ namespace InvenAdClicker.Utils
         private readonly ConcurrentDictionary<string, ProgressInfo> _map =
             new ConcurrentDictionary<string, ProgressInfo>();
         private volatile bool _shouldStopProgress = false;
+        
+        // Refresh rate control (max 10fps)
+        private const int RefreshRateMs = 100;
 
         private ProgressTracker() { }
 
@@ -84,7 +86,6 @@ namespace InvenAdClicker.Utils
                 info.Threads = Math.Max(0, info.Threads + threadDelta);
                 info.PendingClicks += pendingClicksDelta;
 
-                // 타임스탬프 갱신
                 info.LastUpdateUtc = now;
                 if (!info.FirstUpdateUtc.HasValue)
                     info.FirstUpdateUtc = now;
@@ -102,7 +103,6 @@ namespace InvenAdClicker.Utils
                     becameFinished = true;
                 }
 
-                // Finished로 전환되는 순간 cps를 고정 저장
                 if (becameFinished && info.FirstClickUtc.HasValue && !info.CompletedCps.HasValue)
                 {
                     var elapsedSec = Math.Max(1.0, (now - info.FirstClickUtc.Value).TotalSeconds);
@@ -115,8 +115,12 @@ namespace InvenAdClicker.Utils
         {
             try
             {
-                Console.SetCursorPosition(left, top);
-                return true;
+                if (left >= 0 && top >= 0 && top < Console.BufferHeight)
+                {
+                    Console.SetCursorPosition(left, top);
+                    return true;
+                }
+                return false;
             }
             catch
             {
@@ -127,7 +131,7 @@ namespace InvenAdClicker.Utils
         public void PrintProgress()
         {
             bool redirected = Console.IsOutputRedirected;
-            bool isWindowsTerminal = !redirected && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WT_SESSION"));
+            
             if (_map.IsEmpty)
             {
                 lock (ConsoleLocker.Lock)
@@ -136,31 +140,25 @@ namespace InvenAdClicker.Utils
                 }
                 return;
             }
-            int statusW = Math.Max("Status".Length, Enum.GetNames(typeof(ProgressStatus)).Max(s => s.Length)) + 2;
-            int rateW = 8;   // Speed(c/s)
-            int succW = 8;   // Success(%)
-            int etaW = 10;   // ETA
-            int thrdW = 6;   // Threads
-            var urls = _map.Keys.OrderBy(k => k).ToList();
-            int headerLines = 2; // header + separator
-            var startUtc = DateTime.UtcNow;
 
-            // 화면 출력용 폭 계산: 창 너비에 맞춰 URL 열 폭을 조정
-            int sepW = 1;    // URL과 Status 사이 고정 공백 1칸
-            int baseWidth = sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
-            int urlW = redirected ? Math.Max(20, _map.Keys.Max(k => k.Length) + 2)
-                                   : Math.Max(8, Console.WindowWidth - baseWidth);
-            int tableWidth = urlW + baseWidth;
-            if (!redirected && !isWindowsTerminal)
-            {
-                // 고전 콘솔의 경우 가로 스크롤 허용(가능 시)
-                EnsureBufferWidth(tableWidth);
-            }
+            int statusW = Math.Max("Status".Length, Enum.GetNames(typeof(ProgressStatus)).Max(s => s.Length)) + 2;
+            int rateW = 8;
+            int succW = 8;
+            int etaW = 10;
+            int thrdW = 6;
+            var urls = _map.Keys.OrderBy(k => k).ToList();
+            int headerLines = 2;
+            var startUtc = DateTime.UtcNow;
 
             if (!redirected)
             {
                 lock (ConsoleLocker.Lock)
                 {
+                    Console.Clear();
+                    int sepW = 1;
+                    int baseWidth = sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+                    int urlW = Math.Max(8, Console.WindowWidth - baseWidth);
+                    
                     string header =
                         "URL".PadRight(urlW) +
                         new string(' ', sepW) +
@@ -174,105 +172,85 @@ namespace InvenAdClicker.Utils
                         "ETA".PadRight(etaW) +
                         "Err".PadRight(6) +
                         "Thrd".PadRight(thrdW);
-                    WriteLineFitting(header);
-                    WriteLineFitting(new string('-', tableWidth));
-
-                    for (int i = 0; i < urls.Count; i++)
-                    {
-                        PrintProgressLine(urls[i], _map[urls[i]], urlW, statusW, succW, rateW, etaW, thrdW, tableWidth);
-                        Console.WriteLine();
-                    }
+                    
+                    Console.WriteLine(FitWithEllipsis(header, Console.WindowWidth));
+                    Console.WriteLine(new string('-', Console.WindowWidth));
+                    
+                    for (int i = 0; i < urls.Count + 2; i++) Console.WriteLine();
                 }
             }
 
             while (true)
             {
-                lock (ConsoleLocker.Lock)
+                if (!redirected)
                 {
-                    if (!redirected)
+                    int winW = 80;
+                    try { winW = Console.WindowWidth; } catch { }
+
+                    int sepW = 1;
+                    int baseWidth = sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
+                    int urlW = Math.Max(8, winW - baseWidth);
+
+                    lock (ConsoleLocker.Lock)
                     {
-                        // 창 크기 변경 시 폭 재계산 및 필요 시 버퍼 확장
-                        baseWidth = sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
-                        urlW = Math.Max(8, Console.WindowWidth - baseWidth);
-                        tableWidth = urlW + baseWidth;
-                        if (!isWindowsTerminal)
-                            EnsureBufferWidth(tableWidth);
                         for (int i = 0; i < urls.Count; i++)
                         {
                             var url = urls[i];
-                            var info = _map[url];
-
-                            lock (info)
+                            if (_map.TryGetValue(url, out var info))
                             {
                                 TrySetCursor(0, headerLines + i);
-                                PrintProgressLine(url, info, urlW, statusW, succW, rateW, etaW, thrdW, tableWidth);
+                                PrintProgressLine(url, info, urlW, statusW, succW, rateW, etaW, thrdW, winW);
                             }
                         }
 
-                        // Summary 갱신 위치로 이동(표 바로 아래)
                         int summaryRow = headerLines + urls.Count;
                         TrySetCursor(0, summaryRow);
-                        PrintSummary(urls, urlW, statusW, succW, rateW, etaW, startUtc, tableWidth);
+                        PrintSummary(urls, urlW, statusW, succW, rateW, etaW, startUtc, winW);
                     }
                 }
 
                 bool done = _map.Values.All(info =>
                     info.Status == ProgressStatus.Finished || info.Status == ProgressStatus.Error || info.Status == ProgressStatus.NoAds);
-                if (done || _shouldStopProgress)
+                
+                if (_shouldStopProgress || done)
                 {
-                    Thread.Sleep(150); // 마지막 갱신 반영 여유
-                    lock (ConsoleLocker.Lock)
-                    {
-                        if (redirected)
+                   if (done)
+                   {
+                        Thread.Sleep(RefreshRateMs);
+                        lock (ConsoleLocker.Lock)
                         {
-                            // 최종 테이블 및 요약 1회 출력
-                            // 리다이렉트 시에는 전체 길이 기준으로 열 너비 확보
-                            int urlWFull = Math.Max(20, _map.Keys.Max(k => k.Length) + 2);
-                            int tableWidthFull = urlWFull + sepW + statusW + 8 + 8 + 8 + succW + rateW + 9 + etaW + 6 + thrdW;
-                            Console.WriteLine(
-                                "URL".PadRight(urlWFull) +
-                                new string(' ', sepW) +
-                                "Status".PadRight(statusW) +
-                                "Iter".PadRight(8) +
-                                "Ads".PadRight(8) +
-                                "Clicked".PadRight(8) +
-                                "Success".PadRight(succW) +
-                                "Speed".PadRight(rateW) +
-                                "Pending".PadRight(9) +
-                                "ETA".PadRight(etaW) +
-                                "Err".PadRight(6) +
-                                "Thrd".PadRight(thrdW));
-                            Console.WriteLine(new string('-', tableWidthFull));
-                            for (int i = 0; i < urls.Count; i++)
-                            {
-                                var info = _map[urls[i]];
-                                lock (info)
-                                {
-                                    PrintProgressLine(urls[i], info, urlWFull, statusW, succW, rateW, etaW, thrdW, tableWidthFull);
-                                }
-                                Console.WriteLine();
-                            }
-                            Console.WriteLine(new string('-', tableWidthFull));
-                            PrintSummary(urls, urlWFull, statusW, succW, rateW, etaW, startUtc, tableWidthFull);
                             Console.WriteLine();
-                            Console.WriteLine("All tasks completed!");
-                            try { Console.Out.Flush(); } catch { }
+                            Console.WriteLine("All tasks completed.");
                         }
-                        else
-                        {
-                            TrySetCursor(0, headerLines + urls.Count + 1);
-                            Console.WriteLine();
-                        }
-                    }
-                    break;
+                   }
+                   break;
                 }
-                Thread.Sleep(500);
+
+                Thread.Sleep(RefreshRateMs);
             }
         }
 
         private void PrintProgressLine(string url, ProgressInfo info, int urlW, int statusW, int succW, int rateW, int etaW, int thrdW, int tableWidth)
         {
-            Console.ForegroundColor = info.Status switch
+            ProgressStatus status;
+            int total, clicked, pending, errors, threads, iter;
+            double? completedCps;
+            DateTime? firstClick;
+
+            lock (info)
+            {
+                status = info.Status;
+                total = info.TotalAds;
+                clicked = info.ClickedAds;
+                pending = info.PendingClicks;
+                errors = info.Errors;
+                threads = info.Threads;
+                iter = info.Iteration;
+                completedCps = info.CompletedCps;
+                firstClick = info.FirstClickUtc;
+            }
+
+            Console.ForegroundColor = status switch
             {
                 ProgressStatus.Collecting => ConsoleColor.Yellow,
                 ProgressStatus.Collected => ConsoleColor.Magenta,
@@ -282,27 +260,25 @@ namespace InvenAdClicker.Utils
                 _ => ConsoleColor.DarkGray,
             };
 
-            string statusText = info.Status.ToString();
-            // 성공률
-            string succ = info.TotalAds > 0 ? ($"{(info.ClickedAds * 100.0 / Math.Max(1, info.TotalAds)):0.#}%") : "-";
-            // 속도(클릭/초)
+            string statusText = status.ToString();
+            string succ = total > 0 ? ($"{(clicked * 100.0 / Math.Max(1, total)):0.#}%") : "-";
+            
             double cps = 0.0;
-            if (info.Status == ProgressStatus.Finished)
+            if (status == ProgressStatus.Finished)
             {
-                // 완료된 URL은 완료 시점 cps를 그대로 유지
-                cps = info.CompletedCps ?? 0.0;
+                cps = completedCps ?? 0.0;
             }
-            else if (info.FirstClickUtc.HasValue)
+            else if (firstClick.HasValue)
             {
-                var elapsedSec = Math.Max(1.0, (DateTime.UtcNow - info.FirstClickUtc.Value).TotalSeconds);
-                cps = info.ClickedAds / elapsedSec;
+                var elapsedSec = Math.Max(1.0, (DateTime.UtcNow - firstClick.Value).TotalSeconds);
+                cps = clicked / elapsedSec;
             }
+            
             string rate = cps > 0 ? $"{cps:0.00}c/s" : "-";
-            // ETA
             string eta = "-";
-            if (cps > 0 && info.PendingClicks > 0)
+            if (cps > 0 && pending > 0)
             {
-                var sec = info.PendingClicks / cps;
+                var sec = pending / cps;
                 var ts = TimeSpan.FromSeconds(sec);
                 eta = ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}" : $"{ts.Minutes:00}:{ts.Seconds:00}";
             }
@@ -311,32 +287,21 @@ namespace InvenAdClicker.Utils
             string line =
                 $"{urlCell} " +
                 $"{statusText.PadRight(statusW)}" +
-                $"{info.Iteration.ToString().PadRight(8)}" +
-                $"{info.TotalAds.ToString().PadRight(8)}" +
-                $"{info.ClickedAds.ToString().PadRight(8)}" +
+                $"{iter.ToString().PadRight(8)}" +
+                $"{total.ToString().PadRight(8)}" +
+                $"{clicked.ToString().PadRight(8)}" +
                 $"{succ.PadRight(succW)}" +
                 $"{rate.PadRight(rateW)}" +
-                $"{info.PendingClicks.ToString().PadRight(9)}" +
+                $"{pending.ToString().PadRight(9)}" +
                 $"{eta.PadRight(etaW)}" +
-                $"{info.Errors.ToString().PadRight(6)}" +
-                $"{info.Threads.ToString().PadRight(thrdW)}";
+                $"{errors.ToString().PadRight(6)}" +
+                $"{threads.ToString().PadRight(thrdW)}";
 
-            if (!Console.IsOutputRedirected)
-            {
-                // 창 너비에 맞춰 정확히 덮어쓰기(래핑 방지)
-                int w = Console.WindowWidth;
-                if (line.Length >= w)
-                    Console.Write(line.Substring(0, Math.Max(0, w)));
-                else
-                    Console.Write(line.PadRight(w));
-            }
+            int w = tableWidth;
+            if (line.Length >= w)
+                Console.Write(line.Substring(0, Math.Max(0, w)));
             else
-            {
-                // 리다이렉트 시 전체 행 출력
-                if (line.Length < tableWidth)
-                    line = line.PadRight(tableWidth);
-                Console.Write(line);
-            }
+                Console.Write(line.PadRight(w));
 
             Console.ResetColor();
         }
@@ -344,33 +309,33 @@ namespace InvenAdClicker.Utils
         private void PrintSummary(List<string> urls, int urlW, int statusW, int succW, int rateW, int etaW, DateTime startUtc, int tableWidth)
         {
             int totalAds = 0, clicked = 0, pending = 0, errors = 0;
-            // 각 URL의 cps(행 표시 논리와 동일)를 수집하여 평균을 요약 Speed로 사용
             var cpsList = new List<double>();
+            
             foreach (var u in urls)
             {
-                var info = _map[u];
-                lock (info)
+                if (_map.TryGetValue(u, out var info))
                 {
-                    totalAds += info.TotalAds;
-                    clicked += info.ClickedAds;
-                    pending += info.PendingClicks;
-                    errors += info.Errors;
+                    lock (info)
+                    {
+                        totalAds += info.TotalAds;
+                        clicked += info.ClickedAds;
+                        pending += info.PendingClicks;
+                        errors += info.Errors;
 
-                    double cps = 0.0;
-                    if (info.Status == ProgressStatus.Finished)
-                    {
-                        cps = info.CompletedCps ?? 0.0;
+                        double cps = 0.0;
+                        if (info.Status == ProgressStatus.Finished)
+                            cps = info.CompletedCps ?? 0.0;
+                        else if (info.FirstClickUtc.HasValue)
+                        {
+                            var elapsedSec = Math.Max(1.0, (DateTime.UtcNow - info.FirstClickUtc.Value).TotalSeconds);
+                            cps = info.ClickedAds / elapsedSec;
+                        }
+
+                        if (cps > 0) cpsList.Add(cps);
                     }
-                    else if (info.FirstClickUtc.HasValue)
-                    {
-                        var elapsedSec = Math.Max(1.0, (DateTime.UtcNow - info.FirstClickUtc.Value).TotalSeconds);
-                        cps = info.ClickedAds / elapsedSec;
-                    }
-                    if (cps > 0)
-                        cpsList.Add(cps);
                 }
             }
-            // 요약 Speed = 각 URL의 cps 평균(클릭 발생한 URL만)
+
             var avgCps = cpsList.Count > 0 ? cpsList.Average() : 0.0;
             string rate = avgCps > 0 ? $"{avgCps:0.00}c/s" : "-";
             string succ = totalAds > 0 ? ($"{(clicked * 100.0 / Math.Max(1, totalAds)):0.#}%") : "-";
@@ -383,63 +348,18 @@ namespace InvenAdClicker.Utils
             }
 
             string summary = $"Summary | Ads:{totalAds} Clicked:{clicked} Pending:{pending} Err:{errors} | Success:{succ} Speed:{rate} ETA:{eta}";
-            if (!Console.IsOutputRedirected)
-            {
-                int w = Console.WindowWidth;
-                if (summary.Length >= w)
-                    Console.Write(summary.Substring(0, Math.Max(0, w)));
-                else
-                    Console.Write(summary.PadRight(w));
-            }
+            if (summary.Length >= tableWidth)
+                Console.Write(summary.Substring(0, Math.Max(0, tableWidth)));
             else
-            {
-                if (summary.Length < tableWidth)
-                    summary = summary.PadRight(tableWidth);
-                Console.Write(summary);
-            }
-        }
-
-        private static void EnsureBufferWidth(int requiredWidth)
-        {
-            try
-            {
-                // 창 너비보다 작게 설정할 수 없으므로 보정
-                int desiredWidth = Math.Max(requiredWidth, Console.WindowWidth);
-                if (Console.BufferWidth < desiredWidth)
-                {
-                    int desiredHeight = Math.Max(Console.BufferHeight, Console.WindowHeight);
-                    Console.SetBufferSize(desiredWidth, desiredHeight);
-                }
-            }
-            catch
-            {
-                // 일부 호스트(Windows Terminal 등)에서는 가로 스크롤이 지원되지 않을 수 있음
-                // 실패 시 그냥 무시하고 진행(래핑은 호스트가 처리)
-            }
+                Console.Write(summary.PadRight(tableWidth));
         }
 
         private static string FitWithEllipsis(string s, int width)
         {
             if (width <= 0) return string.Empty;
             if (s.Length <= width) return s.PadRight(width);
-            if (width == 1) return "…"; // 최소 표기
+            if (width == 1) return "…";
             return s.Substring(0, Math.Max(0, width - 1)) + "…";
-        }
-
-        private static void WriteLineFitting(string s)
-        {
-            if (!Console.IsOutputRedirected)
-            {
-                int w = Console.WindowWidth;
-                if (s.Length > w)
-                    Console.WriteLine(s.Substring(0, Math.Max(0, w)));
-                else
-                    Console.WriteLine(s);
-            }
-            else
-            {
-                Console.WriteLine(s);
-            }
         }
     }
 }

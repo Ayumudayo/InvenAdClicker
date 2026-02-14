@@ -34,7 +34,7 @@ namespace InvenAdClicker
                 {
                     logging.ClearProviders();
                     logging.AddProvider(new RollingFileLoggerProvider());
-                    logging.SetMinimumLevel(LogLevel.Debug);
+                    // Remove hardcoded Debug level to respect appsettings.json or default
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
