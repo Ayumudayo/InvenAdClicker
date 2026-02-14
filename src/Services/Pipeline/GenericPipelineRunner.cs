@@ -73,7 +73,7 @@ namespace InvenAdClicker.Services.Pipeline
             var clickReader = clickChannel.Reader;
 
             Task producerTask = ProduceUrlsAsync(urls, urlWriter, cancellationToken);
-            Task[] clickers = StartClickers(clickerCount, clickReader, cancellationToken);
+            Task[] clickers = StartClickers(clickerCount, clickReader, cancellationToken, idOffset: 0);
             Task[] collectors = StartCollectors(collectorCount, urlReader, clickWriter, cancellationToken);
 
             try
@@ -81,6 +81,22 @@ namespace InvenAdClicker.Services.Pipeline
                 await producerTask;
                 await Task.WhenAll(collectors);
                 clickWriter.TryComplete();
+
+                // After collection completes, reuse the freed page permits to increase click throughput.
+                // This keeps total concurrency bounded by MaxDegreeOfParallelism while avoiding the long tail
+                // where a single clicker drains the remaining backlog.
+                if (clickerCount < mdp)
+                {
+                    var extraClickers = StartClickers(mdp - clickerCount, clickReader, cancellationToken, idOffset: clickerCount);
+                    if (extraClickers.Length > 0)
+                    {
+                        var merged = new Task[clickers.Length + extraClickers.Length];
+                        Array.Copy(clickers, 0, merged, 0, clickers.Length);
+                        Array.Copy(extraClickers, 0, merged, clickers.Length, extraClickers.Length);
+                        clickers = merged;
+                    }
+                }
+
                 await Task.WhenAll(clickers);
             }
             catch (OperationCanceledException)
@@ -220,12 +236,13 @@ namespace InvenAdClicker.Services.Pipeline
         private Task[] StartClickers(
             int clickerCount,
             ChannelReader<(string page, string link)> clickReader,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            int idOffset)
         {
             var clickers = new Task[clickerCount];
             for (int i = 0; i < clickerCount; i++)
             {
-                int workerId = i;
+                int workerId = idOffset + i;
                 clickers[i] = Task.Run(async () =>
                 {
                     var page = await _browserPool.AcquireAsync(cancellationToken);
@@ -234,7 +251,7 @@ namespace InvenAdClicker.Services.Pipeline
                     {
                         await foreach (var work in clickReader.ReadAllAsync(cancellationToken))
                         {
-                            page = await ClickOneAsync(page, work.page, work.link, cancellationToken);
+                            page = await ClickOneAsync(page, workerId, work.page, work.link, cancellationToken);
                         }
                     }
                     finally
@@ -247,12 +264,12 @@ namespace InvenAdClicker.Services.Pipeline
             return clickers;
         }
 
-        private async Task<TPage> ClickOneAsync(TPage page, string sourceUrl, string link, CancellationToken cancellationToken)
+        private async Task<TPage> ClickOneAsync(TPage page, int clickerId, string sourceUrl, string link, CancellationToken cancellationToken)
         {
             _progress.Update(sourceUrl, ProgressStatus.Clicking, threadDelta: +1);
             try
             {
-                page = await _adClicker.ClickAdAsync(page, link, cancellationToken);
+                page = await _adClicker.ClickAdAsync(page, link, clickerId, cancellationToken);
                 _progress.Update(sourceUrl, clickDelta: 1);
                 return page;
             }
@@ -314,10 +331,10 @@ namespace InvenAdClicker.Services.Pipeline
                     _progress.Update(url, pendingClicksDelta: links.Count);
                     foreach (var link in links)
                     {
-                        _progress.Update(url, ProgressStatus.Clicking, threadDelta: +1);
+                            _progress.Update(url, ProgressStatus.Clicking, threadDelta: +1);
                         try
                         {
-                            page = await _adClicker.ClickAdAsync(page, link, cancellationToken);
+                            page = await _adClicker.ClickAdAsync(page, link, clickerId: 0, cancellationToken);
                             _progress.Update(url, clickDelta: 1);
                         }
                         catch (OperationCanceledException)

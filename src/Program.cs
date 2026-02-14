@@ -79,6 +79,16 @@ namespace InvenAdClicker
                 {
                     Headless = settings.Debug.Enabled ? settings.Debug.Headless : true
                 };
+
+                if (!settings.Debug.Enabled)
+                {
+                    launchOptions.Args = new[]
+                    {
+                        "--blink-settings=imagesEnabled=false",
+                        "--disable-remote-fonts"
+                    };
+                }
+
                 await using var browser = await playwright.Chromium.LaunchAsync(launchOptions);
                 await LoginVerifier.VerifyPlaywrightAsync(browser, settings, logger, encryption, cts.Token);
                 await using var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);

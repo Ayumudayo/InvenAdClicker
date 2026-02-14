@@ -162,10 +162,10 @@ namespace InvenAdClicker.Utils
                     () => _settings.CollectionAttempts, v => _settings.CollectionAttempts = v);
                 EnsureMinRuntime(nameof(_settings.MaxClickAttempts), 1,
                     () => _settings.MaxClickAttempts, v => _settings.MaxClickAttempts = v);
-                // 클릭 딜레이는 100ms 미만이면 실패로 간주
-                if (_settings.ClickDelayMilliseconds < 100)
+                // 클릭 딜레이는 200ms 미만이면 실패로 간주
+                if (_settings.ClickDelayMilliseconds < 200)
                 {
-                    var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 100ms보다 작습니다. 클릭 간 딜레이는 100ms 이상이어야 합니다.";
+                    var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 200ms보다 작습니다. 클릭 간 딜레이는 200ms 이상이어야 합니다.";
                     throw new ApplicationException(msg);
                 }
 

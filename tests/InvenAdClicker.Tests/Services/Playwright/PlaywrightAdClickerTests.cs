@@ -37,7 +37,7 @@ namespace InvenAdClicker.Tests.Services.Playwright
             var link = "http://example.com/ad";
 
             // Act
-            await _clicker.ClickAdAsync(_mockPage.Object, link, CancellationToken.None);
+            await _clicker.ClickAdAsync(_mockPage.Object, link, clickerId: 0, CancellationToken.None);
 
             // Assert
             _mockPage.Verify(p => p.GotoAsync(It.IsAny<string>(), It.IsAny<PageGotoOptions>()), Times.Never);
@@ -52,7 +52,7 @@ namespace InvenAdClicker.Tests.Services.Playwright
             var link = "http://example.com/ad";
 
             // Act
-            await _clicker.ClickAdAsync(_mockPage.Object, link, CancellationToken.None);
+            await _clicker.ClickAdAsync(_mockPage.Object, link, clickerId: 0, CancellationToken.None);
 
             // Assert
             _mockPage.Verify(p => p.GotoAsync(link, It.IsAny<PageGotoOptions>()), Times.Once);

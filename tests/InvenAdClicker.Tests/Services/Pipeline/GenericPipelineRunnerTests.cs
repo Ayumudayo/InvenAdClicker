@@ -81,17 +81,17 @@ namespace InvenAdClicker.Tests.Services.Pipeline
             _mockCollector.Setup(x => x.CollectLinksAsync(It.IsAny<object>(), urls[0], It.IsAny<CancellationToken>()))
                 .ReturnsAsync(links);
 
-            _mockClicker.Setup(x => x.ClickAdAsync(It.IsAny<object>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((object page, string _, CancellationToken __) => page);
+            _mockClicker.Setup(x => x.ClickAdAsync(It.IsAny<object>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((object page, string _, int __, CancellationToken ___) => page);
 
             // Act
             await runner.RunAsync(urls);
 
             // Assert
             _mockCollector.Verify(x => x.CollectLinksAsync(It.IsAny<object>(), urls[0], It.IsAny<CancellationToken>()), Times.Once);
-            _mockClicker.Verify(x => x.ClickAdAsync(It.IsAny<object>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(links.Count));
-            _mockClicker.Verify(x => x.ClickAdAsync(It.IsAny<object>(), links[0], It.IsAny<CancellationToken>()), Times.Once);
-            _mockClicker.Verify(x => x.ClickAdAsync(It.IsAny<object>(), links[1], It.IsAny<CancellationToken>()), Times.Once);
+            _mockClicker.Verify(x => x.ClickAdAsync(It.IsAny<object>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(links.Count));
+            _mockClicker.Verify(x => x.ClickAdAsync(It.IsAny<object>(), links[0], It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+            _mockClicker.Verify(x => x.ClickAdAsync(It.IsAny<object>(), links[1], It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 }

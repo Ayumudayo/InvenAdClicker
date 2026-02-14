@@ -110,10 +110,12 @@ namespace InvenAdClicker.Services.Playwright
 
                 if (shouldContinue)
                 {
+                    PlaywrightPageTelemetry.RecordRouteDecision(page, resourceType, continued: true);
                     await route.ContinueAsync();
                 }
                 else
                 {
+                    PlaywrightPageTelemetry.RecordRouteDecision(page, resourceType, continued: false);
                     await route.AbortAsync();
                 }
             });
