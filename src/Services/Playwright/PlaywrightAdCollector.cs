@@ -15,11 +15,13 @@ namespace InvenAdClicker.Services.Playwright
     {
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
+        private readonly ProgressTracker _progress;
 
-        public PlaywrightAdCollector(AppSettings settings, IAppLogger logger)
+        public PlaywrightAdCollector(AppSettings settings, IAppLogger logger, ProgressTracker progress)
         {
             _settings = settings;
             _logger = logger;
+            _progress = progress;
         }
 
         public async Task<List<string>> CollectLinksAsync(IPage page, string url, CancellationToken cancellationToken)
@@ -34,6 +36,9 @@ namespace InvenAdClicker.Services.Playwright
             for (int i = 0; i < _settings.CollectionAttempts; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // Iteration = number of collection attempts for this URL.
+                _progress.Update(url, iterDelta: 1);
 
                 PlaywrightPageTelemetry.ResetRouteStats(page);
                 var attemptStartLinks = allLinks.Count;

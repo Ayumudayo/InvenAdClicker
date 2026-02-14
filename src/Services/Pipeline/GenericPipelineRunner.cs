@@ -128,7 +128,6 @@ namespace InvenAdClicker.Services.Pipeline
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     await writer.WriteAsync(url, cancellationToken);
-                    _progress.Update(url, ProgressStatus.Waiting, iterDelta: 1);
                 }
                 writer.TryComplete();
             }

@@ -94,7 +94,7 @@ namespace InvenAdClicker
                 await using var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
                 await playwrightPool.InitializePoolAsync(cts.Token);
 
-                IAdCollector<IPage> adCollector = new PlaywrightAdCollector(settings, logger);
+                IAdCollector<IPage> adCollector = new PlaywrightAdCollector(settings, logger, progress);
                 IAdClicker<IPage> adClicker = new PlaywrightAdClicker(settings, logger, playwrightPool);
                 var runner = new GenericPipelineRunner<IPage>(settings, logger, playwrightPool, progress, adCollector, adClicker);
                 
