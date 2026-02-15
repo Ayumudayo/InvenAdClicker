@@ -1,6 +1,7 @@
 using Microsoft.Playwright;
 using InvenAdClicker.Models;
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using InvenAdClicker.Services.Interfaces;
@@ -20,7 +21,7 @@ namespace InvenAdClicker.Services.Playwright
             _browserPool = browserPool;
         }
 
-        public async Task<IPage> ClickAdAsync(IPage page, string link, CancellationToken cancellationToken)
+        public async Task<IPage> ClickAdAsync(IPage page, string link, int clickerId, CancellationToken cancellationToken)
         {
             if (_settings.DryRun)
             {
@@ -33,12 +34,25 @@ namespace InvenAdClicker.Services.Playwright
             {
                 try
                 {
+                    PlaywrightPageTelemetry.ResetRouteStats(page);
+                    var swTotal = Stopwatch.StartNew();
+                    var sw = Stopwatch.StartNew();
                     await page.GotoAsync(link, new PageGotoOptions
                     {
                         WaitUntil = WaitUntilState.Commit, // Commit으로 변경: 페이지 로딩 완료 대기 안 함
                         Timeout = _settings.PageLoadTimeoutMilliseconds
                     });
+                    var gotoMs = sw.ElapsedMilliseconds;
+
+                    sw.Restart();
                     await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
+                    var delayMs = sw.ElapsedMilliseconds;
+                    swTotal.Stop();
+
+                    var routeStats = PlaywrightPageTelemetry.SnapshotRouteStats(page);
+                    _logger.Info(
+                        $"[perf][click] clicker={clickerId} link='{link}' attempt={i + 1}/{_settings.MaxClickAttempts} " +
+                        $"goto={gotoMs}ms delay={delayMs}ms route={routeStats.FormatCompact()} total={swTotal.ElapsedMilliseconds}ms");
                     return page; // 성공
                 }
                 catch (Exception ex)

@@ -1,13 +1,11 @@
-
 using InvenAdClicker.Models;
 using InvenAdClicker.Services.Interfaces;
 using InvenAdClicker.Utils;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System;
-using System.Linq;
 
 namespace InvenAdClicker.Services.Pipeline
 {
@@ -34,160 +32,331 @@ namespace InvenAdClicker.Services.Pipeline
 
         public async Task RunAsync(string[] urls, CancellationToken cancellationToken = default)
         {
-            var urlChannel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+            if (urls == null || urls.Length == 0)
+            {
+                _logger.Warn("TargetUrls가 비어 있어 파이프라인을 종료합니다.");
+                return;
+            }
+
+            int mdp = Math.Max(1, _settings.MaxDegreeOfParallelism);
+            if (mdp == 1)
+            {
+                await RunSingleWorkerAsync(urls, cancellationToken);
+                _logger.Info("파이프라인 실행이 완료되었습니다.");
+                return;
+            }
+
+            int collectorCount = Math.Max(1, mdp - 1);
+            int clickerCount = Math.Max(1, mdp - collectorCount);
+            int urlCapacity = Math.Max(4, collectorCount * 2);
+            int clickCapacity = Math.Max(100, mdp * 50);
+
+            var urlChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(urlCapacity)
             {
                 SingleWriter = true,
-                SingleReader = false
+                SingleReader = false,
+                FullMode = BoundedChannelFullMode.Wait,
+                AllowSynchronousContinuations = false
             });
 
-            var clickChannel = Channel.CreateUnbounded<(string page, string link)>(new UnboundedChannelOptions
+            var clickChannel = Channel.CreateBounded<(string page, string link)>(new BoundedChannelOptions(clickCapacity)
             {
                 SingleWriter = false,
-                SingleReader = false
+                SingleReader = false,
+                FullMode = BoundedChannelFullMode.Wait,
+                AllowSynchronousContinuations = false
             });
 
-            int urlsRemaining = urls.Length;
-            int activeCollectors = 0;
-            int activeClickers = 0;
+            var urlWriter = urlChannel.Writer;
+            var urlReader = urlChannel.Reader;
             var clickWriter = clickChannel.Writer;
+            var clickReader = clickChannel.Reader;
 
-            _ = Task.Run(async () =>
+            Task producerTask = ProduceUrlsAsync(urls, urlWriter, cancellationToken);
+            Task[] clickers = StartClickers(clickerCount, clickReader, cancellationToken, idOffset: 0);
+            Task[] collectors = StartCollectors(collectorCount, urlReader, clickWriter, cancellationToken);
+
+            try
+            {
+                await producerTask;
+                await Task.WhenAll(collectors);
+                clickWriter.TryComplete();
+
+                // After collection completes, reuse the freed page permits to increase click throughput.
+                // This keeps total concurrency bounded by MaxDegreeOfParallelism while avoiding the long tail
+                // where a single clicker drains the remaining backlog.
+                if (clickerCount < mdp)
+                {
+                    var extraClickers = StartClickers(mdp - clickerCount, clickReader, cancellationToken, idOffset: clickerCount);
+                    if (extraClickers.Length > 0)
+                    {
+                        var merged = new Task[clickers.Length + extraClickers.Length];
+                        Array.Copy(clickers, 0, merged, 0, clickers.Length);
+                        Array.Copy(extraClickers, 0, merged, clickers.Length, extraClickers.Length);
+                        clickers = merged;
+                    }
+                }
+
+                await Task.WhenAll(clickers);
+            }
+            catch (OperationCanceledException)
+            {
+                urlWriter.TryComplete();
+                clickWriter.TryComplete();
+                throw;
+            }
+            catch (Exception ex)
+            {
+                urlWriter.TryComplete(ex);
+                clickWriter.TryComplete(ex);
+                throw;
+            }
+            finally
+            {
+                urlWriter.TryComplete();
+                clickWriter.TryComplete();
+            }
+
+            _logger.Info("파이프라인 실행이 완료되었습니다.");
+        }
+
+        private async Task ProduceUrlsAsync(string[] urls, ChannelWriter<string> writer, CancellationToken cancellationToken)
+        {
+            try
             {
                 foreach (var url in urls)
                 {
-                    await urlChannel.Writer.WriteAsync(url, cancellationToken);
-                    _progress.Update(url, ProgressStatus.Waiting, iterDelta: 1);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await writer.WriteAsync(url, cancellationToken);
                 }
-                urlChannel.Writer.Complete();
-            }, cancellationToken);
-
-            _ = Task.Run(async () =>
+                writer.TryComplete();
+            }
+            catch (Exception ex)
             {
-                await urlChannel.Reader.Completion;
-                while (Volatile.Read(ref activeCollectors) > 0)
-                    await Task.Delay(50, cancellationToken);
-                clickWriter.TryComplete();
-            }, cancellationToken);
+                writer.TryComplete(ex);
+                throw;
+            }
+        }
 
-            var workers = new Task[_settings.MaxDegreeOfParallelism];
-            for (int i = 0; i < _settings.MaxDegreeOfParallelism; i++)
+        private Task[] StartCollectors(
+            int collectorCount,
+            ChannelReader<string> urlReader,
+            ChannelWriter<(string page, string link)> clickWriter,
+            CancellationToken cancellationToken)
+        {
+            var collectors = new Task[collectorCount];
+            for (int i = 0; i < collectorCount; i++)
             {
                 int workerId = i;
-                workers[i] = Task.Run(async () =>
+                collectors[i] = Task.Run(async () =>
                 {
                     var page = await _browserPool.AcquireAsync(cancellationToken);
-                    _logger.Info($"파이프라인 워커 {workerId} 시작");
-
+                    _logger.Info($"[Collector:{workerId}] Started");
                     try
                     {
-                        var urlReader = urlChannel.Reader;
-                        var linkReader = clickChannel.Reader;
-
-                        while (!cancellationToken.IsCancellationRequested)
+                        await foreach (var url in urlReader.ReadAllAsync(cancellationToken))
                         {
-                            bool didWork = false;
-
-                            int remaining = Volatile.Read(ref urlsRemaining);
-                            int targetCollectors = Math.Min(_settings.MaxDegreeOfParallelism, Math.Max(remaining, 0));
-
-                            if (remaining > 0 && Volatile.Read(ref activeCollectors) < targetCollectors)
-                            {
-                                Interlocked.Increment(ref activeCollectors);
-                                if (urlReader.TryRead(out var url))
-                                {
-                                    didWork = true;
-                                    try
-                                    {
-                                        _progress.Update(url, ProgressStatus.Collecting, threadDelta: +1);
-                                        var links = await _adCollector.CollectLinksAsync(page, url, cancellationToken);
-                                        var status = links.Count > 0 ? ProgressStatus.Collected : ProgressStatus.NoAds;
-                                        _progress.Update(url, status, adsDelta: links.Count);
-
-                                        if (links.Count > 0)
-                                        {
-                                            _progress.Update(url, pendingClicksDelta: links.Count);
-                                            foreach (var link in links)
-                                                await clickWriter.WriteAsync((url, link), cancellationToken);
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _logger.Error($"[수집기{workerId}] {url} 처리 중 처리되지 않은 예외: {ex.Message}", ex);
-                                        _progress.Update(url, ProgressStatus.Error, errDelta: 1);
-                                        page = await _browserPool.RenewAsync(page, cancellationToken);
-                                    }
-                                    finally
-                                    {
-                                        Interlocked.Decrement(ref urlsRemaining);
-                                        _progress.Update(url, threadDelta: -1);
-                                        Interlocked.Decrement(ref activeCollectors);
-                                    }
-                                }
-                                else
-                                {
-                                    Interlocked.Decrement(ref activeCollectors); // URL이 없으므로 즉시 감소
-                                }
-                            }
-
-                            if (!didWork)
-                            {                                
-                                int allowedClickers = _settings.MaxDegreeOfParallelism - targetCollectors;
-                                if (allowedClickers > 0 && Volatile.Read(ref activeClickers) < allowedClickers && linkReader.TryRead(out var work))
-                                {
-                                    Interlocked.Increment(ref activeClickers);
-                                    didWork = true;
-                                    try
-                                    {
-                                        _progress.Update(work.page, ProgressStatus.Clicking, threadDelta: +1);
-                                        page = await _adClicker.ClickAdAsync(page, work.link, cancellationToken);
-                                        _progress.Update(work.page, clickDelta: 1);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _logger.Error($"[클리커{workerId}] 링크 '{work.link}' (페이지 '{work.page}') 최종 시도 실패", ex);
-                                        _progress.Update(work.page, errDelta: 1);
-                                        try
-                                        {
-                                            // 클릭 실패 후 브라우저/페이지 갱신으로 회복력 향상
-                                            page = await _browserPool.RenewAsync(page, cancellationToken);
-                                        }
-                                        catch (Exception renewEx)
-                                        {
-                                            _logger.Warn($"[클리커{workerId}] 클릭 오류 후 브라우저 갱신 실패: {renewEx.Message}");
-                                        }
-                                    }
-                                    finally
-                                    {
-                                        _progress.Update(work.page, pendingClicksDelta: -1, threadDelta: -1);
-                                        Interlocked.Decrement(ref activeClickers);
-                                    }
-                                }
-                            }
-
-                            if (!didWork)
-                            {
-                                var urlWaitTask = urlReader.WaitToReadAsync(cancellationToken).AsTask();
-                                var linkWaitTask = linkReader.WaitToReadAsync(cancellationToken).AsTask();
-                                await Task.WhenAny(urlWaitTask, linkWaitTask);
-
-                                bool urlHasData = urlWaitTask.IsCompletedSuccessfully && urlWaitTask.Result;
-                                bool linkHasData = linkWaitTask.IsCompletedSuccessfully && linkWaitTask.Result;
-
-                                if (!urlHasData && urlReader.Completion.IsCompleted && !linkHasData)
-                                    break;
-                            }
+                            page = await CollectOneAsync(page, url, clickWriter, cancellationToken);
                         }
                     }
                     finally
                     {
                         _browserPool.Release(page);
-                        _logger.Info($"파이프라인 워커 {workerId} 종료");
+                        _logger.Info($"[Collector:{workerId}] Ended");
                     }
                 }, cancellationToken);
             }
+            return collectors;
+        }
 
-            await Task.WhenAll(workers);
-            _logger.Info("파이프라인 실행이 완료되었습니다.");
+        private async Task<TPage> CollectOneAsync(
+            TPage page,
+            string url,
+            ChannelWriter<(string page, string link)> clickWriter,
+            CancellationToken cancellationToken)
+        {
+            List<string> links;
+            _progress.Update(url, ProgressStatus.Collecting, threadDelta: +1);
+            try
+            {
+                links = await _adCollector.CollectLinksAsync(page, url, cancellationToken);
+                var status = links.Count > 0 ? ProgressStatus.Collected : ProgressStatus.NoAds;
+                _progress.Update(url, status, adsDelta: links.Count);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"[Collector] Collection Error on {url}: {ex.Message}", ex);
+                _progress.Update(url, ProgressStatus.Error, errDelta: 1);
+                page = await _browserPool.RenewAsync(page, cancellationToken);
+                return page;
+            }
+            finally
+            {
+                _progress.Update(url, threadDelta: -1);
+            }
+
+            if (links.Count == 0)
+            {
+                return page;
+            }
+
+            foreach (var link in links)
+            {
+                // Important: increase PendingClicks before making the item visible to clickers.
+                _progress.Update(url, pendingClicksDelta: +1);
+                try
+                {
+                    await clickWriter.WriteAsync((url, link), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    _progress.Update(url, pendingClicksDelta: -1);
+                    throw;
+                }
+                catch (ChannelClosedException)
+                {
+                    _progress.Update(url, pendingClicksDelta: -1);
+                    throw;
+                }
+                catch
+                {
+                    _progress.Update(url, pendingClicksDelta: -1);
+                    throw;
+                }
+            }
+
+            return page;
+        }
+
+        private Task[] StartClickers(
+            int clickerCount,
+            ChannelReader<(string page, string link)> clickReader,
+            CancellationToken cancellationToken,
+            int idOffset)
+        {
+            var clickers = new Task[clickerCount];
+            for (int i = 0; i < clickerCount; i++)
+            {
+                int workerId = idOffset + i;
+                clickers[i] = Task.Run(async () =>
+                {
+                    var page = await _browserPool.AcquireAsync(cancellationToken);
+                    _logger.Info($"[Clicker:{workerId}] Started");
+                    try
+                    {
+                        await foreach (var work in clickReader.ReadAllAsync(cancellationToken))
+                        {
+                            page = await ClickOneAsync(page, workerId, work.page, work.link, cancellationToken);
+                        }
+                    }
+                    finally
+                    {
+                        _browserPool.Release(page);
+                        _logger.Info($"[Clicker:{workerId}] Ended");
+                    }
+                }, cancellationToken);
+            }
+            return clickers;
+        }
+
+        private async Task<TPage> ClickOneAsync(TPage page, int clickerId, string sourceUrl, string link, CancellationToken cancellationToken)
+        {
+            _progress.Update(sourceUrl, ProgressStatus.Clicking, threadDelta: +1);
+            try
+            {
+                page = await _adClicker.ClickAdAsync(page, link, clickerId, cancellationToken);
+                _progress.Update(sourceUrl, clickDelta: 1);
+                return page;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"[Clicker] Click Error on '{link}' (from '{sourceUrl}'): {ex.Message}", ex);
+                _progress.Update(sourceUrl, errDelta: 1);
+                page = await _browserPool.RenewAsync(page, cancellationToken);
+                return page;
+            }
+            finally
+            {
+                _progress.Update(sourceUrl, pendingClicksDelta: -1, threadDelta: -1);
+            }
+        }
+
+        private async Task RunSingleWorkerAsync(string[] urls, CancellationToken cancellationToken)
+        {
+            var page = await _browserPool.AcquireAsync(cancellationToken);
+            try
+            {
+                foreach (var url in urls)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    List<string> links;
+                    _progress.Update(url, ProgressStatus.Collecting, threadDelta: +1);
+                    try
+                    {
+                        links = await _adCollector.CollectLinksAsync(page, url, cancellationToken);
+                        var status = links.Count > 0 ? ProgressStatus.Collected : ProgressStatus.NoAds;
+                        _progress.Update(url, status, adsDelta: links.Count);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error($"[SingleWorker] Collection Error on {url}: {ex.Message}", ex);
+                        _progress.Update(url, ProgressStatus.Error, errDelta: 1);
+                        page = await _browserPool.RenewAsync(page, cancellationToken);
+                        continue;
+                    }
+                    finally
+                    {
+                        _progress.Update(url, threadDelta: -1);
+                    }
+
+                    if (links.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    _progress.Update(url, pendingClicksDelta: links.Count);
+                    foreach (var link in links)
+                    {
+                            _progress.Update(url, ProgressStatus.Clicking, threadDelta: +1);
+                        try
+                        {
+                            page = await _adClicker.ClickAdAsync(page, link, clickerId: 0, cancellationToken);
+                            _progress.Update(url, clickDelta: 1);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"[SingleWorker] Click Error on '{link}' (from '{url}'): {ex.Message}", ex);
+                            _progress.Update(url, errDelta: 1);
+                            page = await _browserPool.RenewAsync(page, cancellationToken);
+                        }
+                        finally
+                        {
+                            _progress.Update(url, pendingClicksDelta: -1, threadDelta: -1);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _browserPool.Release(page);
+            }
         }
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.Playwright;
 using InvenAdClicker.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,130 +15,113 @@ namespace InvenAdClicker.Services.Playwright
     {
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
+        private readonly ProgressTracker _progress;
 
-        public PlaywrightAdCollector(AppSettings settings, IAppLogger logger)
+        public PlaywrightAdCollector(AppSettings settings, IAppLogger logger, ProgressTracker progress)
         {
             _settings = settings;
             _logger = logger;
+            _progress = progress;
         }
 
         public async Task<List<string>> CollectLinksAsync(IPage page, string url, CancellationToken cancellationToken)
         {
             var allLinks = new HashSet<string>();
             bool IsAllowed(string value) => Utils.AdAllowList.IsAllowed(value);
-            // 페이지 콘솔 로그 중 우리 태그만 브리징(노이즈 억제)
-            try
-            {
-                page.Console += (_, msg) =>
-                {
-                    try
-                    {
-                        var text = msg.Text ?? string.Empty;
-                        if (text.Contains(Constants.InvenAdClickerLogPrefix))
-                        {
-                            _logger.Info($"{Constants.PlaywrightConsoleLogPrefix} {text}");
-                        }
-                    }
-                    catch { }
-                };
-            }
-            catch { }
-            // zicfm topslideAd 대응: postMessage/함수 래핑으로 clickurl 수집 훅 주입
-            try
-            {
-                await page.AddInitScriptAsync(@"(function(){
-  try{
-    if(window.top !== window){ return; }
-    window.__ad_links = window.__ad_links || [];
-    window.__ad_logs = window.__ad_logs || [];
-    if(!window.__ad_hooked){
-      window.__ad_hooked = true;
-      try{ window.__ad_logs.push('hook installed'); }catch(_){ }
-      window.addEventListener('message', function(e){
-        try{
-          var hostOk = (function(){ try{ return new URL(e.origin).hostname === 'zicf.inven.co.kr'; }catch(_){ return false; } })();
-          if(e && hostOk && e.data && e.data.clickurl){
-            var u = e.data.clickurl; if(u && typeof u === 'string'){ window.__ad_links.push(u); try{ window.__ad_logs.push('pm:'+u); }catch(_){ } }
-          }
-        }catch(_){ }
-      }, false);
-      var _sts = window.showTopSlide;
-      if(typeof _sts === 'function'){
-        window.showTopSlide = function(img, clickurl){ try{ if(clickurl && typeof clickurl === 'string'){ window.__ad_links.push(clickurl); try{ window.__ad_logs.push('wrap:showTopSlide:'+clickurl); }catch(_){ } } }catch(_){ } return _sts.apply(this, arguments); };
-      }
-      var _stsh = window.showTopSlideHome;
-      if(typeof _stsh === 'function'){
-        window.showTopSlideHome = function(img, clickurl){ try{ if(clickurl && typeof clickurl === 'string'){ window.__ad_links.push(clickurl); try{ window.__ad_logs.push('wrap:showTopSlideHome:'+clickurl); }catch(_){ } } }catch(_){ } return _stsh.apply(this, arguments); };
-      }
-    }
-  }catch(_){ }
-})();");
-                _logger.Info("[수집기] 초기 훅 스크립트 주입 예약 완료");
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"[수집기] 초기 스크립트 주입 실패: {ex.Message}");
-            }
+
+            var swTotal = Stopwatch.StartNew();
+
+            // Note: Console events and InitScripts are now handled in PlaywrightBrowserPool
+
             for (int i = 0; i < _settings.CollectionAttempts; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                // Iteration = number of collection attempts for this URL.
+                _progress.Update(url, iterDelta: 1);
+
+                PlaywrightPageTelemetry.ResetRouteStats(page);
+                var attemptStartLinks = allLinks.Count;
+                var swAttempt = Stopwatch.StartNew();
+                long gotoMs = 0;
+                long iframeWaitMs = 0;
+                long bufferMs = 0;
+                long extractMs = 0;
+                long extrasMs = 0;
+                long reloadMs = 0;
+                bool iframeTimedOut = false;
+
+                var sw = Stopwatch.StartNew();
                 await page.GotoAsync(url, new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
                     Timeout = _settings.PageLoadTimeoutMilliseconds
                 });
+                gotoMs = sw.ElapsedMilliseconds;
                 _logger.Info($"[수집기] 탐색 시도 {i+1}/{_settings.CollectionAttempts}: {url}");
 
                 try
                 {
-                    // 광고 iframe이 DOM에 나타날 때까지 짧게 대기
+                    sw.Restart();
                     await page.WaitForSelectorAsync("iframe", new PageWaitForSelectorOptions
                     {
-                        Timeout = _settings.IframeTimeoutMilliSeconds
+                        Timeout = _settings.IframeTimeoutMilliSeconds,
+                        State = WaitForSelectorState.Attached
                     });
-                    // postMessage가 도달할 약간의 여유
+                    iframeWaitMs = sw.ElapsedMilliseconds;
+
+                    // Buffer for postMessage/dynamic ads
+                    sw.Restart();
                     await page.WaitForTimeoutAsync(_settings.PostMessageBufferMilliseconds);
+                    bufferMs = sw.ElapsedMilliseconds;
                 }
                 catch (TimeoutException)
                 {
-                    // iframe이 없을 수도 있으므로 과도한 소음을 줄이기 위해 Debug로만 기록
+                    iframeTimedOut = true;
+                    iframeWaitMs = sw.ElapsedMilliseconds;
                     _logger.Debug($"{url}에서 {_settings.IframeTimeoutMilliSeconds}ms 내에 iframe 미검출");
                 }
 
-                // DOM 스냅샷이 아닌 프레임 컬렉션을 사용해 안정적으로 순회
-                var frames = page.Frames.Where(f => f.ParentFrame != null);
+                // Optimization: Collect all links from all frames in parallel using JS evaluation where possible
+                // Playwright handles cross-frame evaluation automagically if we iterate frames
+                sw.Restart();
+                var frames = page.Frames.Where(f => f.ParentFrame != null).ToList();
                 try { _logger.Info($"[수집기] 프레임 수: {frames.Count()} (전체: {page.Frames.Count})"); } catch { }
+
                 foreach (var frame in frames)
                 {
                     try
                     {
                         var frameUrl = frame.Url ?? string.Empty;
-                        if (!IsAllowed(frameUrl)) continue; // 허용되지 않는 프레임은 스킵
+                        if (!IsAllowed(frameUrl)) continue;
 
-                        var linksInFrame = await frame.Locator("a[href]").AllAsync();
-                        foreach (var linkLocator in linksInFrame)
+                        // Bulk extraction using EvaluateAsync (Much faster than Locator.AllAsync loop)
+                        var hrefs = await frame.EvaluateAsync<string[]>(@"
+                            () => Array.from(document.querySelectorAll('a[href]'))
+                                .map(a => a.getAttribute('href'))
+                                .filter(h => h && h !== '#' && !h.includes('empty.gif'))
+                        ");
+
+                        foreach (var href in hrefs)
                         {
-                            var href = await linkLocator.GetAttributeAsync("href");
-                            if (!string.IsNullOrEmpty(href) &&
-                                !href.Equals("#", StringComparison.OrdinalIgnoreCase) &&
-                                !href.Contains("empty.gif", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (href.StartsWith("//")) href = "https:" + href;
-                                if (IsAllowed(href))
-                                    allLinks.Add(href);
-                            }
+                            var normalized = href;
+                            if (normalized.StartsWith("//")) normalized = "https:" + normalized;
+                            if (IsAllowed(normalized))
+                                allLinks.Add(normalized);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.Warn($"[수집기] {url} 프레임 처리 실패: {ex.Message}");
+                        // Some frames might be cross-origin restricted or detached
+                        _logger.Debug($"[수집기] 프레임 링크 추출 실패: {ex.Message}");
                     }
                 }
+                extractMs = sw.ElapsedMilliseconds;
 
-                // postMessage/래핑으로 수집된 클릭 URL 병합
+                // Merge postMessage/hook collected links
                 try
                 {
+                    sw.Restart();
                     var extras = await page.EvaluateAsync<string[]>("(function(){try{return (window.__ad_links||[]).slice();}catch(_){return [];}})()");
                     var logs = await page.EvaluateAsync<string[]>("(function(){try{var a=(window.__ad_logs||[]).slice(); window.__ad_logs=[]; return a;}catch(_){return [];}})()");
                     if (logs != null && logs.Length > 0)
@@ -157,6 +141,7 @@ namespace InvenAdClicker.Services.Playwright
                         }
                     }
                     _logger.Info($"[수집기] 누적 링크 수(필터 전): {allLinks.Count}");
+                    extrasMs = sw.ElapsedMilliseconds;
                 }
                 catch (Exception ex)
                 {
@@ -165,21 +150,36 @@ namespace InvenAdClicker.Services.Playwright
 
                 if (i < _settings.CollectionAttempts - 1)
                 {
+                    sw.Restart();
                     await page.ReloadAsync(new PageReloadOptions
                     {
                         WaitUntil = WaitUntilState.DOMContentLoaded,
                         Timeout = _settings.PageLoadTimeoutMilliseconds
                     });
+                    reloadMs = sw.ElapsedMilliseconds;
                 }
+
+                swAttempt.Stop();
+                var routeStats = PlaywrightPageTelemetry.SnapshotRouteStats(page);
+                var added = Math.Max(0, allLinks.Count - attemptStartLinks);
+                _logger.Info(
+                    $"[perf][collect] url='{url}' attempt={i + 1}/{_settings.CollectionAttempts} " +
+                    $"goto={gotoMs}ms iframeWait={iframeWaitMs}ms{(iframeTimedOut ? "(timeout)" : string.Empty)} " +
+                    $"buffer={bufferMs}ms extract={extractMs}ms extras={extrasMs}ms reload={reloadMs}ms " +
+                    $"links+={added} linksTotal={allLinks.Count} route={routeStats.FormatCompact()} total={swAttempt.ElapsedMilliseconds}ms");
             }
-            
-            // 필터링
+
+            swTotal.Stop();
+             
+            // Filtering
             var result = allLinks.Where(l => !string.IsNullOrEmpty(l) && l.StartsWith(Constants.ActualAdLinkPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
             _logger.Info($"[수집기] 최종 링크: {result.Count} / 전체 {allLinks.Count}");
             if (result.Count == 0)
             {
                 _logger.Warn("[수집기] RealMedia 링크 미검출.");
             }
+
+            _logger.Info($"[perf][collect] url='{url}' done attempts={_settings.CollectionAttempts} total={swTotal.ElapsedMilliseconds}ms links={result.Count}/{allLinks.Count}");
             return result;
         }
     }

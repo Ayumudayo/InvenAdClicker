@@ -1,5 +1,6 @@
 using InvenAdClicker.Models;
 using System;
+using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -25,14 +26,19 @@ namespace InvenAdClicker.Utils
         {
             try
             {
-                // 기본 설정 파일이 없으면 현재 런타임 기본값으로 생성
-                JsonObject BuildDefaultAppNode()
+                var defaultTemplate = new AppSettings
                 {
-                    var appNode = JsonSerializer.SerializeToNode(_settings, typeof(AppSettings)) as JsonObject ?? new JsonObject();
-                    // 배열 필드는 명시적 빈 배열로 초기화하여 사용자가 편집 가능
-                    if (appNode["TargetUrls"] is null) appNode["TargetUrls"] = new JsonArray();
-                    return appNode;
-                }
+                    // Keep default URLs in the generated file as a starting point.
+                    // (Runtime binding uses AppSettings.TargetUrls default empty to avoid unintended merging/duplication.)
+                    TargetUrls = new[]
+                    {
+                        "https://www.inven.co.kr/",
+                        "https://m.inven.co.kr/",
+                        "https://it.inven.co.kr/"
+                    }
+                };
+
+                JsonObject BuildDefaultAppNode() => BuildCanonicalObject(typeof(AppSettings), existing: null, template: defaultTemplate);
 
                 JsonObject root;
                 bool changed = false;
@@ -92,7 +98,7 @@ namespace InvenAdClicker.Utils
                 }
 
                 var appSettingsNode = root["AppSettings"] as JsonObject;
-                
+                 
                 if (appSettingsNode is null)
                 {
                     _logger.Info("AppSettings 섹션이 없어 기본 섹션을 생성합니다.");
@@ -100,41 +106,19 @@ namespace InvenAdClicker.Utils
                     root["AppSettings"] = appSettingsNode;
                     changed = true;
                 }
-                if (appSettingsNode is null)
+
+                // Schema sync: rebuild AppSettings in canonical order, keep existing values, add missing defaults,
+                // remove obsolete keys, and deep-sync nested objects (e.g. Debug).
+                var canonicalAppSettingsNode = BuildCanonicalObject(typeof(AppSettings), appSettingsNode, defaultTemplate);
+                var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+                var beforeApp = appSettingsNode.ToJsonString(jsonOptions);
+                var afterApp = canonicalAppSettingsNode.ToJsonString(jsonOptions);
+                if (!string.Equals(beforeApp, afterApp, StringComparison.Ordinal))
                 {
-                    _logger.Info("AppSettings 섹션이 없어 기본 섹션을 생성합니다.");
-                    appSettingsNode = BuildDefaultAppNode();
-                    root["AppSettings"] = appSettingsNode;
+                    root["AppSettings"] = canonicalAppSettingsNode;
+                    appSettingsNode = canonicalAppSettingsNode;
                     changed = true;
-                }
-
-                // 새 필드 추가: AppSettings 클래스의 공개 속성 중 JSON에 없는 항목은 기본값으로 추가
-                var props = typeof(AppSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .Where(p => p.CanRead && p.GetMethod != null);
-                var propNames = props.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-
-                foreach (var prop in props)
-                {
-                    if (!appSettingsNode.ContainsKey(prop.Name))
-                    {
-                        var value = prop.GetValue(_settings);
-                        var node = JsonSerializer.SerializeToNode(value, prop.PropertyType);
-                        appSettingsNode[prop.Name] = node;
-                        changed = true;
-                        _logger.Info($"구성에 누락된 필드 추가: AppSettings.{prop.Name}");
-                    }
-                }
-
-                // 사용하지 않게 된 필드 제거: AppSettings에 존재하지 않는 키는 제거
-                var existingKeys = appSettingsNode.Select(kvp => kvp.Key).ToList();
-                foreach (var key in existingKeys)
-                {
-                    if (!propNames.Contains(key))
-                    {
-                        appSettingsNode.Remove(key);
-                        changed = true;
-                        _logger.Info($"사용하지 않는 필드 제거: AppSettings.{key}");
-                    }
+                    _logger.Info("appsettings.json AppSettings 스키마/정렬을 최신 상태로 갱신합니다.");
                 }
 
                 // 사용자 값은 파일에 쓰지 않고, 런타임에서만 최소치 보정
@@ -162,10 +146,10 @@ namespace InvenAdClicker.Utils
                     () => _settings.CollectionAttempts, v => _settings.CollectionAttempts = v);
                 EnsureMinRuntime(nameof(_settings.MaxClickAttempts), 1,
                     () => _settings.MaxClickAttempts, v => _settings.MaxClickAttempts = v);
-                // 클릭 딜레이는 100ms 미만이면 실패로 간주
-                if (_settings.ClickDelayMilliseconds < 100)
+                // 클릭 딜레이는 200ms 미만이면 실패로 간주
+                if (_settings.ClickDelayMilliseconds < 200)
                 {
-                    var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 100ms보다 작습니다. 클릭 간 딜레이는 100ms 이상이어야 합니다.";
+                    var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 200ms보다 작습니다. 클릭 간 딜레이는 200ms 이상이어야 합니다.";
                     throw new ApplicationException(msg);
                 }
 
@@ -182,24 +166,45 @@ namespace InvenAdClicker.Utils
                 else
                 {
                     var validUrls = new System.Collections.Generic.List<string>();
+                    var seen = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                    var duplicates = new System.Collections.Generic.List<string>();
                     foreach (var url in _settings.TargetUrls)
                     {
-                        if (Uri.TryCreate(url, UriKind.Absolute, out _))
+                        var trimmed = url?.Trim();
+                        if (string.IsNullOrWhiteSpace(trimmed))
                         {
-                            validUrls.Add(url);
+                            continue;
+                        }
+
+                        if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+                        {
+                            if (seen.Add(trimmed))
+                            {
+                                validUrls.Add(trimmed);
+                            }
+                            else
+                            {
+                                duplicates.Add(trimmed);
+                            }
                         }
                         else
                         {
-                            _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {url}");
+                            _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {trimmed}");
                         }
+                    }
+
+                    if (duplicates.Count > 0)
+                    {
+                        var uniqueDups = duplicates.Distinct(StringComparer.Ordinal).Take(5).ToArray();
+                        var sample = uniqueDups.Length > 0 ? string.Join(", ", uniqueDups) : "-";
+                        _logger.Warn($"중복 URL {duplicates.Count}개를 런타임에서 제외했습니다.(파일 미변경) 예: {sample}");
                     }
                     _settings.TargetUrls = validUrls.ToArray();
                 }
 
                 if (changed)
                 {
-                    var options = new JsonSerializerOptions { WriteIndented = true };
-                    AtomicWrite(SettingsFileName, root.ToJsonString(options));
+                    AtomicWrite(SettingsFileName, root.ToJsonString(jsonOptions));
                     _logger.Info("appsettings.json 구성이 최신 스키마로 갱신되었습니다.");
                 }
             }
@@ -207,6 +212,83 @@ namespace InvenAdClicker.Utils
             {
                 _logger.Warn($"설정 파일을 자동으로 갱신하지 못했습니다: {ex.Message}");
             }
+        }
+
+        private static JsonObject BuildCanonicalObject(Type type, JsonObject? existing, object template)
+        {
+            var obj = new JsonObject();
+            var props = GetOrderedProperties(type);
+            foreach (var prop in props)
+            {
+                JsonNode? existingValue = null;
+                bool hasExisting = false;
+                if (existing != null)
+                {
+                    hasExisting = existing.TryGetPropertyValue(prop.Name, out existingValue);
+                }
+
+                if (hasExisting && existingValue == null)
+                {
+                    // Preserve explicit nulls from the user's file.
+                    obj[prop.Name] = null;
+                    continue;
+                }
+
+                object? templateValue = null;
+                try { templateValue = prop.GetValue(template); } catch { }
+
+                obj[prop.Name] = SyncNode(prop.PropertyType, existingValue, templateValue);
+            }
+            return obj;
+        }
+
+        private static PropertyInfo[] GetOrderedProperties(Type type)
+        {
+            return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanRead && p.GetMethod != null && p.GetIndexParameters().Length == 0)
+                .OrderBy(p => p.MetadataToken)
+                .ToArray();
+        }
+
+        private static bool IsComplexObject(Type type)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+            if (type == typeof(string)) return false;
+            if (type.IsPrimitive || type.IsEnum) return false;
+            if (type == typeof(decimal)) return false;
+            if (typeof(IEnumerable).IsAssignableFrom(type)) return false;
+            return type.IsClass;
+        }
+
+        private static JsonNode? SyncNode(Type type, JsonNode? existingNode, object? templateValue)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            if (IsComplexObject(type))
+            {
+                var existingObj = existingNode as JsonObject;
+                object? nestedTemplate = templateValue;
+                if (nestedTemplate == null || nestedTemplate.GetType() != type)
+                {
+                    try { nestedTemplate = Activator.CreateInstance(type); } catch { }
+                }
+
+                if (nestedTemplate == null)
+                {
+                    // Best-effort: preserve existing object if possible.
+                    return existingObj?.DeepClone() ?? new JsonObject();
+                }
+
+                return BuildCanonicalObject(type, existingObj, nestedTemplate);
+            }
+
+            // Preserve existing values as-is (do not coerce types), only fill in missing nodes.
+            if (existingNode != null)
+            {
+                return existingNode.DeepClone();
+            }
+
+            return JsonSerializer.SerializeToNode(templateValue, type);
         }
 
         private static void TryBackup(string path)

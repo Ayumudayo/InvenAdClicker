@@ -6,6 +6,6 @@ namespace InvenAdClicker.Services.Interfaces
 {
     public interface IAdClicker<TPage>
     {
-        Task<TPage> ClickAdAsync(TPage page, string link, CancellationToken cancellationToken);
+        Task<TPage> ClickAdAsync(TPage page, string link, int clickerId, CancellationToken cancellationToken);
     }
 }
