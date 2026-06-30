@@ -303,7 +303,25 @@ namespace InvenAdClicker.Services.Playwright
             else
             {
                 _logger.Warn("null 또는 종료된 페이지를 반환했습니다. 새로 생성합니다.");
+                ClosePageContextBestEffort(page);
                 _semaphore.Release(); // Just release the slot, don't auto-recreate here (Runner will handle)
+            }
+        }
+
+        private static void ClosePageContextBestEffort(IPage? page)
+        {
+            if (page == null)
+            {
+                return;
+            }
+
+            try
+            {
+                page.Context.CloseAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // The page/context/browser may already be closed.
             }
         }
 

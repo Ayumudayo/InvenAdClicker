@@ -69,6 +69,27 @@ namespace InvenAdClicker.Tests.Services.Playwright
         }
 
         [Test]
+        public async Task Release_ClosesContextForUnusablePage()
+        {
+            var browser = CreateBrowser(connected: true);
+            browser.Page.SetupGet(item => item.IsClosed).Returns(true);
+
+            var pool = new PlaywrightBrowserPool(
+                browser.Browser.Object,
+                new AppSettings { MaxDegreeOfParallelism = 1 },
+                new TestLogger(),
+                new Encryption());
+
+            var unusablePage = await pool.AcquireAsync();
+
+            pool.Release(unusablePage);
+
+            browser.Context.Verify(
+                context => context.CloseAsync(It.IsAny<BrowserContextCloseOptions>()),
+                Times.Once);
+        }
+
+        [Test]
         public async Task DisposeAsync_DoesNotCloseDisconnectedBrowser()
         {
             var disconnected = CreateBrowser(connected: false);

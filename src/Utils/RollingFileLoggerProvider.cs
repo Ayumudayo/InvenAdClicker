@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -17,6 +18,14 @@ namespace InvenAdClicker.Utils
             _logger = new RollingFileLogger();
         }
 
+        public RollingFileLoggerProvider(
+            int capacity,
+            Func<string, string, Encoding, CancellationToken, Task>? fileAppender = null,
+            TimeSpan? disposeTimeout = null)
+        {
+            _logger = new RollingFileLogger(capacity, fileAppender, disposeTimeout);
+        }
+
         public ILogger CreateLogger(string categoryName) => _logger;
 
         public void Dispose()
@@ -29,6 +38,10 @@ namespace InvenAdClicker.Utils
             private readonly Channel<LogEntry> _logChannel;
             private readonly Task _writeTask;
             private readonly CancellationTokenSource _cts;
+            private readonly string _runLogPath;
+            private readonly string _fatalRunLogPath;
+            private readonly Func<string, string, Encoding, CancellationToken, Task> _fileAppender;
+            private readonly TimeSpan _disposeTimeout;
             private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
             private struct LogEntry
@@ -40,29 +53,47 @@ namespace InvenAdClicker.Utils
                 public Exception? Exception;
             }
 
-            public RollingFileLogger()
+            public RollingFileLogger(
+                int capacity = 10000,
+                Func<string, string, Encoding, CancellationToken, Task>? fileAppender = null,
+                TimeSpan? disposeTimeout = null)
             {
-                // Bounded Channel to apply backpressure if disk I/O is too slow
-                _logChannel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(10000)
+                // Keep logging bounded and non-blocking if disk I/O falls behind.
+                _logChannel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(Math.Max(1, capacity))
                 {
                     SingleReader = true,
                     SingleWriter = false,
-                    FullMode = BoundedChannelFullMode.DropOldest // Prevent memory bloat
+                    FullMode = BoundedChannelFullMode.DropOldest
                 });
                 _cts = new CancellationTokenSource();
+                var processStartedAt = Process.GetCurrentProcess().StartTime;
+                _runLogPath = GetRunPath(processStartedAt);
+                _fatalRunLogPath = GetFatalRunPath(processStartedAt);
+                _fileAppender = fileAppender ?? File.AppendAllTextAsync;
+                _disposeTimeout = disposeTimeout ?? TimeSpan.FromSeconds(1);
                 _writeTask = Task.Run(ProcessLogQueue);
             }
 
             public void Dispose()
             {
                 _logChannel.Writer.TryComplete();
-                _cts.Cancel();
+                var completed = false;
                 try
                 {
-                    _writeTask.Wait(1000); // Wait for remaining logs to flush
+                    completed = _writeTask.Wait(_disposeTimeout);
                 }
                 catch { }
-                _cts.Dispose();
+
+                if (!completed)
+                {
+                    try { _cts.Cancel(); } catch { }
+                    try { completed = _writeTask.Wait(TimeSpan.FromMilliseconds(100)); } catch { }
+                }
+
+                if (completed)
+                {
+                    _cts.Dispose();
+                }
             }
 
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
@@ -91,7 +122,7 @@ namespace InvenAdClicker.Utils
             {
                 try
                 {
-                    while (await _logChannel.Reader.WaitToReadAsync(_cts.Token))
+                    while (await _logChannel.Reader.WaitToReadAsync())
                     {
                         while (_logChannel.Reader.TryRead(out var entry))
                         {
@@ -133,8 +164,7 @@ namespace InvenAdClicker.Utils
                 // File I/O is now async and lock-free (single consumer)
                 try
                 {
-                    var dailyPath = GetDailyPath(entry.Timestamp);
-                    EnsureDirectory(dailyPath);
+                    EnsureDirectory(_runLogPath);
                     
                     var sb = new StringBuilder();
                     sb.AppendLine(line);
@@ -143,13 +173,12 @@ namespace InvenAdClicker.Utils
                         sb.AppendLine(entry.Exception.ToString());
                     }
 
-                    await File.AppendAllTextAsync(dailyPath, sb.ToString(), Utf8NoBom, _cts.Token);
+                    await _fileAppender(_runLogPath, sb.ToString(), Utf8NoBom, _cts.Token);
 
                     if (entry.Level == LogLevel.Critical)
                     {
-                        var fatalPath = GetFatalPath(entry.Timestamp);
-                        EnsureDirectory(fatalPath);
-                        await File.AppendAllTextAsync(fatalPath, sb.ToString(), Utf8NoBom, _cts.Token);
+                        EnsureDirectory(_fatalRunLogPath);
+                        await _fileAppender(_fatalRunLogPath, sb.ToString(), Utf8NoBom, _cts.Token);
                     }
                 }
                 catch
@@ -163,17 +192,17 @@ namespace InvenAdClicker.Utils
                 return $"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss,fff}][{MapLevel(entry.Level)}] {entry.Message}";
             }
 
-            private static string GetDailyPath(DateTime now)
+            private static string GetRunPath(DateTime processStartedAt)
             {
-                var dir = Path.Combine("logs", now.ToString("yyyy"), now.ToString("MM"));
-                var file = now.ToString("yyyy-MM-dd") + ".log";
+                var dir = Path.Combine("logs", processStartedAt.ToString("yyyy"), processStartedAt.ToString("MM"));
+                var file = processStartedAt.ToString("yyyy-MM-dd_HH-mm-ss-fff") + ".log";
                 return Path.Combine(dir, file);
             }
 
-            private static string GetFatalPath(DateTime now)
+            private static string GetFatalRunPath(DateTime processStartedAt)
             {
-                var dir = Path.Combine("logs", "fatal", now.ToString("yyyy"), now.ToString("MM"));
-                var file = now.ToString("yyyy-MM-dd") + ".log";
+                var dir = Path.Combine("logs", "fatal", processStartedAt.ToString("yyyy"), processStartedAt.ToString("MM"));
+                var file = processStartedAt.ToString("yyyy-MM-dd_HH-mm-ss-fff") + ".log";
                 return Path.Combine(dir, file);
             }
 

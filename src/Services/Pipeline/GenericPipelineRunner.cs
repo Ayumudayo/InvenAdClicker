@@ -11,6 +11,7 @@ namespace InvenAdClicker.Services.Pipeline
 {
     public class GenericPipelineRunner<TPage> : IPipelineRunner where TPage : class
     {
+        private static readonly TimeSpan WorkerShutdownTimeout = TimeSpan.FromMilliseconds(500);
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
         private readonly IBrowserPool<TPage> _browserPool;
@@ -83,20 +84,24 @@ namespace InvenAdClicker.Services.Pipeline
 
             try
             {
-                await producerTask;
-                await Task.WhenAll(collectors);
-                await Task.WhenAll(clickers);
+                await WaitForCompletionOrFirstFailureAsync(
+                    producerTask,
+                    cancellationToken,
+                    collectors,
+                    clickers);
             }
             catch (OperationCanceledException)
             {
                 urlWriter.TryComplete();
                 clickWriter.TryComplete();
+                await WaitForWorkersToStopAsync(WorkerShutdownTimeout, collectors, clickers);
                 throw;
             }
             catch (Exception ex)
             {
                 urlWriter.TryComplete(ex);
                 clickWriter.TryComplete(ex);
+                await WaitForWorkersToStopAsync(WorkerShutdownTimeout, collectors, clickers);
                 throw;
             }
             finally
@@ -106,6 +111,44 @@ namespace InvenAdClicker.Services.Pipeline
             }
 
             _logger.Info("파이프라인 실행이 완료되었습니다.");
+        }
+
+        private static async Task WaitForCompletionOrFirstFailureAsync(
+            Task producerTask,
+            CancellationToken cancellationToken,
+            params Task[][] taskGroups)
+        {
+            var activeTasks = new List<Task> { producerTask };
+            foreach (var taskGroup in taskGroups)
+            {
+                activeTasks.AddRange(taskGroup);
+            }
+
+            Task? cancellationTask = null;
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            while (activeTasks.Count > 0)
+            {
+                var waitTasks = new List<Task>(activeTasks.Count + (cancellationTask == null ? 0 : 1));
+                waitTasks.AddRange(activeTasks);
+                if (cancellationTask != null)
+                {
+                    waitTasks.Add(cancellationTask);
+                }
+
+                var completed = await Task.WhenAny(waitTasks);
+                activeTasks.Remove(completed);
+
+                if (completed == cancellationTask)
+                {
+                    await completed;
+                }
+
+                await completed;
+            }
         }
 
         private async Task ProduceUrlsAsync(string[] urls, ChannelWriter<string> writer, CancellationToken cancellationToken)
@@ -140,20 +183,34 @@ namespace InvenAdClicker.Services.Pipeline
                 int workerId = i;
                 collectors[i] = Task.Run(async () =>
                 {
-                    var page = await _browserPool.AcquireAsync(cancellationToken);
-                    _logger.Info($"[Collector:{workerId}] Started");
+                    TPage? page = null;
+                    bool collectorCompleted = false;
+
+                    void MarkCollectorCompleted()
+                    {
+                        if (collectorCompleted)
+                        {
+                            return;
+                        }
+
+                        collectorCompleted = true;
+                        if (Interlocked.Decrement(ref remainingCollectors) == 0)
+                        {
+                            clickWriter.TryComplete();
+                        }
+                    }
+
                     try
                     {
+                        page = await _browserPool.AcquireAsync(cancellationToken);
+                        _logger.Info($"[Collector:{workerId}] Started");
+
                         await foreach (var url in urlReader.ReadAllAsync(cancellationToken))
                         {
                             page = await CollectOneAsync(page, url, clickWriter, cancellationToken);
                         }
 
-                        if (Interlocked.Decrement(ref remainingCollectors) == 0)
-                        {
-                            clickWriter.TryComplete();
-                        }
-
+                        MarkCollectorCompleted();
                         _logger.Info($"[Collector:{workerId}] Switched to click queue");
                         await foreach (var work in clickReader.ReadAllAsync(cancellationToken))
                         {
@@ -162,12 +219,39 @@ namespace InvenAdClicker.Services.Pipeline
                     }
                     finally
                     {
-                        _browserPool.Release(page);
+                        MarkCollectorCompleted();
+                        if (page != null)
+                        {
+                            _browserPool.Release(page);
+                        }
                         _logger.Info($"[Collector:{workerId}] Ended");
                     }
                 }, cancellationToken);
             }
             return collectors;
+        }
+
+        private static async Task WaitForWorkersToStopAsync(TimeSpan timeout, params Task[][] taskGroups)
+        {
+            var tasks = new List<Task>();
+            foreach (var taskGroup in taskGroups)
+            {
+                tasks.AddRange(taskGroup);
+            }
+
+            var allTasks = Task.WhenAll(tasks);
+            try
+            {
+                var completed = await Task.WhenAny(allTasks, Task.Delay(timeout));
+                if (completed == allTasks)
+                {
+                    await allTasks;
+                }
+            }
+            catch
+            {
+                // Preserve the original exception from RunAsync while still giving workers a chance to exit.
+            }
         }
 
         private async Task<TPage> CollectOneAsync(

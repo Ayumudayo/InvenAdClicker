@@ -55,6 +55,10 @@ namespace InvenAdClicker.Services.Playwright
                         $"goto={gotoMs}ms delay={delayMs}ms route={routeStats.FormatCompact()} total={swTotal.ElapsedMilliseconds}ms");
                     return page; // 성공
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     _logger.Warn($"Playwright 클릭 {i + 1}회차 실패('{link}'): {ex.Message}");

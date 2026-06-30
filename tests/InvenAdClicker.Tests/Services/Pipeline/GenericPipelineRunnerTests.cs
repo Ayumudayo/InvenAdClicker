@@ -75,6 +75,137 @@ namespace InvenAdClicker.Tests.Services.Pipeline
             }
         }
 
+        [Test]
+        public async Task CollectorFaultBeforeClickQueueSwitchDoesNotLeaveOtherCollectorsWaitingForever()
+        {
+            string faultUrl = $"fault-{Guid.NewGuid():N}";
+            string normalUrl = $"normal-{Guid.NewGuid():N}";
+            var progress = ProgressTracker.Instance;
+            progress.Initialize(new[] { faultUrl, normalUrl });
+
+            using var cts = new CancellationTokenSource();
+            var settings = new AppSettings
+            {
+                MaxDegreeOfParallelism = 3
+            };
+
+            var runner = new GenericPipelineRunner<string>(
+                settings,
+                new TestLogger(),
+                new RenewFailingBrowserPool(),
+                progress,
+                new DelegateCollector((_, url, _) =>
+                {
+                    if (url == faultUrl)
+                    {
+                        throw new InvalidOperationException("collection failed");
+                    }
+
+                    return Task.FromResult(new List<string>());
+                }),
+                new DelegateClicker((page, _, _, _) => Task.FromResult(page)));
+
+            var runTask = runner.RunAsync(new[] { faultUrl, normalUrl }, cts.Token);
+
+            try
+            {
+                Task completed = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(1)));
+                Assert.That(completed, Is.SameAs(runTask),
+                    "Collector fault must complete the click queue so peer collectors do not wait forever.");
+                Assert.ThrowsAsync<InvalidOperationException>(async () => await runTask);
+            }
+            finally
+            {
+                cts.Cancel();
+                try { await runTask; } catch { }
+            }
+        }
+
+        [Test]
+        public async Task WorkerFaultDoesNotWaitForeverForNonCooperativePeer()
+        {
+            string clickUrl = $"click-{Guid.NewGuid():N}";
+            string faultUrl = $"fault-{Guid.NewGuid():N}";
+            var progress = ProgressTracker.Instance;
+            progress.Initialize(new[] { clickUrl, faultUrl });
+
+            var clickStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseClicker = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var settings = new AppSettings
+            {
+                MaxDegreeOfParallelism = 3
+            };
+
+            var runner = new GenericPipelineRunner<string>(
+                settings,
+                new TestLogger(),
+                new RenewFailingBrowserPool(),
+                progress,
+                new DelegateCollector(async (_, url, cancellationToken) =>
+                {
+                    if (url == faultUrl)
+                    {
+                        await clickStarted.Task.WaitAsync(cancellationToken);
+                        throw new InvalidOperationException("collection failed");
+                    }
+
+                    return new List<string> { "link-1" };
+                }),
+                new DelegateClicker(async (page, _, _, _) =>
+                {
+                    clickStarted.TrySetResult();
+                    await releaseClicker.Task;
+                    return page;
+                }));
+
+            var runTask = runner.RunAsync(new[] { clickUrl, faultUrl }, CancellationToken.None);
+
+            try
+            {
+                Task completed = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(2)));
+                Assert.That(completed, Is.SameAs(runTask),
+                    "A worker fault must not wait forever for a peer stuck in in-flight browser work.");
+                Assert.ThrowsAsync<InvalidOperationException>(async () => await runTask);
+            }
+            finally
+            {
+                releaseClicker.TrySetResult();
+                try { await runTask; } catch { }
+            }
+        }
+
+        [Test]
+        public async Task CancelableTokenDoesNotPreventSuccessfulPipelineCompletion()
+        {
+            string normalUrl = $"normal-{Guid.NewGuid():N}";
+            var progress = ProgressTracker.Instance;
+            progress.Initialize(new[] { normalUrl });
+
+            using var cts = new CancellationTokenSource();
+            var runner = new GenericPipelineRunner<string>(
+                new AppSettings { MaxDegreeOfParallelism = 2 },
+                new TestLogger(),
+                new TestBrowserPool(),
+                progress,
+                new DelegateCollector((_, _, _) => Task.FromResult(new List<string>())),
+                new DelegateClicker((page, _, _, _) => Task.FromResult(page)));
+
+            var runTask = runner.RunAsync(new[] { normalUrl }, cts.Token);
+
+            try
+            {
+                Task completed = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(1)));
+                Assert.That(completed, Is.SameAs(runTask),
+                    "A cancelable token must not keep a successful pipeline waiting forever.");
+                await runTask;
+            }
+            finally
+            {
+                cts.Cancel();
+                try { await runTask; } catch { }
+            }
+        }
+
         private static async Task<bool> WaitForAsync(Task task, TimeSpan timeout)
         {
             Task completed = await Task.WhenAny(task, Task.Delay(timeout));
@@ -133,6 +264,40 @@ namespace InvenAdClicker.Tests.Services.Pipeline
             public Task<string> RenewAsync(string oldBrowser, CancellationToken cancellationToken = default)
             {
                 return AcquireAsync(cancellationToken);
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+
+        private sealed class RenewFailingBrowserPool : IBrowserPool<string>
+        {
+            private int _nextPageId;
+
+            public Task InitializePoolAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task<string> AcquireAsync(CancellationToken cancellationToken = default)
+            {
+                string page = $"page-{Interlocked.Increment(ref _nextPageId)}";
+                return Task.FromResult(page);
+            }
+
+            public void Release(string browser)
+            {
+            }
+
+            public Task<string> RenewAsync(string oldBrowser, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("renew failed");
             }
 
             public ValueTask DisposeAsync()
