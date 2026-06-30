@@ -16,14 +16,17 @@ namespace InvenAdClicker.Services.Playwright
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
         private readonly Encryption _encryption;
-        private readonly IBrowser _browser;
+        private IBrowser _browser;
+        private readonly Func<Task<IBrowser>>? _browserFactory;
         private readonly ConcurrentBag<IPage> _pool;
         private readonly SemaphoreSlim _semaphore;
+        private readonly SemaphoreSlim _browserRestartLock = new(1, 1);
         private string? _storageStatePath;
 
-        public PlaywrightBrowserPool(IBrowser browser, AppSettings settings, IAppLogger logger, Encryption encryption)
+        public PlaywrightBrowserPool(IBrowser browser, AppSettings settings, IAppLogger logger, Encryption encryption, Func<Task<IBrowser>>? browserFactory = null)
         {
             _browser = browser;
+            _browserFactory = browserFactory;
             _settings = settings;
             _logger = logger;
             _encryption = encryption;
@@ -84,7 +87,23 @@ namespace InvenAdClicker.Services.Playwright
                 JavaScriptEnabled = _settings.Debug.Enabled ? _settings.Debug.JavaScriptEnabled : true,
                 StorageStatePath = _storageStatePath // Inject authenticated session
             };
-            var context = await _browser.NewContextAsync(contextOptions);
+
+            var browser = await GetConnectedBrowserAsync(cancellationToken);
+            try
+            {
+                return await CreatePageAsync(browser, contextOptions);
+            }
+            catch (Exception ex) when (IsBrowserTargetClosed(ex) && _browserFactory != null)
+            {
+                _logger.Warn($"Playwright 브라우저 연결이 종료되어 재시작합니다: {ex.Message}");
+                await RestartBrowserAsync(browser, cancellationToken);
+                return await CreatePageAsync(_browser, contextOptions);
+            }
+        }
+
+        private async Task<IPage> CreatePageAsync(IBrowser browser, BrowserNewContextOptions contextOptions)
+        {
+            var context = await browser.NewContextAsync(contextOptions);
             var page = await context.NewPageAsync();
 
             // Setup Network Routes (Blockers)
@@ -171,6 +190,73 @@ namespace InvenAdClicker.Services.Playwright
             return page;
         }
 
+        private async Task<IBrowser> GetConnectedBrowserAsync(CancellationToken cancellationToken)
+        {
+            var browser = _browser;
+            if (browser.IsConnected || _browserFactory == null)
+            {
+                return browser;
+            }
+
+            _logger.Warn("Playwright 브라우저 연결이 끊겨 재시작합니다.");
+            await RestartBrowserAsync(browser, cancellationToken);
+            return _browser;
+        }
+
+        private async Task RestartBrowserAsync(IBrowser failedBrowser, CancellationToken cancellationToken)
+        {
+            if (_browserFactory == null)
+            {
+                return;
+            }
+
+            await _browserRestartLock.WaitAsync(cancellationToken);
+            try
+            {
+                if (!ReferenceEquals(_browser, failedBrowser) && _browser.IsConnected)
+                {
+                    return;
+                }
+
+                await ClosePooledPagesAsync();
+
+                try
+                {
+                    if (failedBrowser.IsConnected)
+                    {
+                        await failedBrowser.CloseAsync();
+                    }
+                }
+                catch
+                {
+                    // The browser may already be gone; restart is still the recovery path.
+                }
+
+                _browser = await _browserFactory();
+                _logger.Info("Playwright 브라우저 재시작 완료");
+            }
+            finally
+            {
+                _browserRestartLock.Release();
+            }
+        }
+
+        private async Task ClosePooledPagesAsync()
+        {
+            while (_pool.TryTake(out var page))
+            {
+                try { await page.Context.CloseAsync(); }
+                catch { /* 무시 */ }
+            }
+        }
+
+        private static bool IsBrowserTargetClosed(Exception ex)
+        {
+            return ex.GetType().FullName == "Microsoft.Playwright.TargetClosedException"
+                || (ex is PlaywrightException
+                    && ex.Message.Contains("Target page, context or browser has been closed", StringComparison.OrdinalIgnoreCase));
+        }
+
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private async Task CreateAndPoolPageAsync(CancellationToken cancellationToken)
         {
@@ -209,7 +295,7 @@ namespace InvenAdClicker.Services.Playwright
 
         public void Release(IPage page)
         {
-            if (page != null && !page.IsClosed)
+            if (IsPageReusable(page))
             {
                 _pool.Add(page);
                 _semaphore.Release();
@@ -218,6 +304,24 @@ namespace InvenAdClicker.Services.Playwright
             {
                 _logger.Warn("null 또는 종료된 페이지를 반환했습니다. 새로 생성합니다.");
                 _semaphore.Release(); // Just release the slot, don't auto-recreate here (Runner will handle)
+            }
+        }
+
+        private static bool IsPageReusable(IPage? page)
+        {
+            if (page == null || page.IsClosed)
+            {
+                return false;
+            }
+
+            try
+            {
+                var browser = page.Context?.Browser;
+                return browser?.IsConnected == true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -280,13 +384,19 @@ namespace InvenAdClicker.Services.Playwright
 
         public async ValueTask DisposeAsync()
         {
-            while (_pool.TryTake(out var page))
-            {
-                try { await page.Context.CloseAsync(); }
-                catch { /* 무시 */ }
-            }
+            await ClosePooledPagesAsync();
 
-            await _browser.CloseAsync();
+            try
+            {
+                if (_browser.IsConnected)
+                {
+                    await _browser.CloseAsync();
+                }
+            }
+            catch
+            {
+                // Disconnected browsers are already gone; disposal should stay best-effort.
+            }
             
             // Clean up temp file
             if (!string.IsNullOrEmpty(_storageStatePath) && File.Exists(_storageStatePath))
