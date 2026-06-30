@@ -11,6 +11,7 @@ namespace InvenAdClicker.Services.Pipeline
 {
     public class GenericPipelineRunner<TPage> : IPipelineRunner where TPage : class
     {
+        private static readonly TimeSpan WorkerShutdownTimeout = TimeSpan.FromMilliseconds(500);
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
         private readonly IBrowserPool<TPage> _browserPool;
@@ -74,41 +75,33 @@ namespace InvenAdClicker.Services.Pipeline
 
             Task producerTask = ProduceUrlsAsync(urls, urlWriter, cancellationToken);
             Task[] clickers = StartClickers(clickerCount, clickReader, cancellationToken, idOffset: 0);
-            Task[] collectors = StartCollectors(collectorCount, urlReader, clickWriter, cancellationToken);
+            Task[] collectors = StartCollectors(
+                collectorCount,
+                urlReader,
+                clickWriter,
+                clickReader,
+                cancellationToken);
 
             try
             {
-                await producerTask;
-                await Task.WhenAll(collectors);
-                clickWriter.TryComplete();
-
-                // After collection completes, reuse the freed page permits to increase click throughput.
-                // This keeps total concurrency bounded by MaxDegreeOfParallelism while avoiding the long tail
-                // where a single clicker drains the remaining backlog.
-                if (clickerCount < mdp)
-                {
-                    var extraClickers = StartClickers(mdp - clickerCount, clickReader, cancellationToken, idOffset: clickerCount);
-                    if (extraClickers.Length > 0)
-                    {
-                        var merged = new Task[clickers.Length + extraClickers.Length];
-                        Array.Copy(clickers, 0, merged, 0, clickers.Length);
-                        Array.Copy(extraClickers, 0, merged, clickers.Length, extraClickers.Length);
-                        clickers = merged;
-                    }
-                }
-
-                await Task.WhenAll(clickers);
+                await WaitForCompletionOrFirstFailureAsync(
+                    producerTask,
+                    cancellationToken,
+                    collectors,
+                    clickers);
             }
             catch (OperationCanceledException)
             {
                 urlWriter.TryComplete();
                 clickWriter.TryComplete();
+                await WaitForWorkersToStopAsync(WorkerShutdownTimeout, collectors, clickers);
                 throw;
             }
             catch (Exception ex)
             {
                 urlWriter.TryComplete(ex);
                 clickWriter.TryComplete(ex);
+                await WaitForWorkersToStopAsync(WorkerShutdownTimeout, collectors, clickers);
                 throw;
             }
             finally
@@ -118,6 +111,44 @@ namespace InvenAdClicker.Services.Pipeline
             }
 
             _logger.Info("파이프라인 실행이 완료되었습니다.");
+        }
+
+        private static async Task WaitForCompletionOrFirstFailureAsync(
+            Task producerTask,
+            CancellationToken cancellationToken,
+            params Task[][] taskGroups)
+        {
+            var activeTasks = new List<Task> { producerTask };
+            foreach (var taskGroup in taskGroups)
+            {
+                activeTasks.AddRange(taskGroup);
+            }
+
+            Task? cancellationTask = null;
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            while (activeTasks.Count > 0)
+            {
+                var waitTasks = new List<Task>(activeTasks.Count + (cancellationTask == null ? 0 : 1));
+                waitTasks.AddRange(activeTasks);
+                if (cancellationTask != null)
+                {
+                    waitTasks.Add(cancellationTask);
+                }
+
+                var completed = await Task.WhenAny(waitTasks);
+                activeTasks.Remove(completed);
+
+                if (completed == cancellationTask)
+                {
+                    await completed;
+                }
+
+                await completed;
+            }
         }
 
         private async Task ProduceUrlsAsync(string[] urls, ChannelWriter<string> writer, CancellationToken cancellationToken)
@@ -142,31 +173,85 @@ namespace InvenAdClicker.Services.Pipeline
             int collectorCount,
             ChannelReader<string> urlReader,
             ChannelWriter<(string page, string link)> clickWriter,
+            ChannelReader<(string page, string link)> clickReader,
             CancellationToken cancellationToken)
         {
+            int remainingCollectors = collectorCount;
             var collectors = new Task[collectorCount];
             for (int i = 0; i < collectorCount; i++)
             {
                 int workerId = i;
                 collectors[i] = Task.Run(async () =>
                 {
-                    var page = await _browserPool.AcquireAsync(cancellationToken);
-                    _logger.Info($"[Collector:{workerId}] Started");
+                    TPage? page = null;
+                    bool collectorCompleted = false;
+
+                    void MarkCollectorCompleted()
+                    {
+                        if (collectorCompleted)
+                        {
+                            return;
+                        }
+
+                        collectorCompleted = true;
+                        if (Interlocked.Decrement(ref remainingCollectors) == 0)
+                        {
+                            clickWriter.TryComplete();
+                        }
+                    }
+
                     try
                     {
+                        page = await _browserPool.AcquireAsync(cancellationToken);
+                        _logger.Info($"[Collector:{workerId}] Started");
+
                         await foreach (var url in urlReader.ReadAllAsync(cancellationToken))
                         {
                             page = await CollectOneAsync(page, url, clickWriter, cancellationToken);
                         }
+
+                        MarkCollectorCompleted();
+                        _logger.Info($"[Collector:{workerId}] Switched to click queue");
+                        await foreach (var work in clickReader.ReadAllAsync(cancellationToken))
+                        {
+                            page = await ClickOneAsync(page, workerId, work.page, work.link, cancellationToken);
+                        }
                     }
                     finally
                     {
-                        _browserPool.Release(page);
+                        MarkCollectorCompleted();
+                        if (page != null)
+                        {
+                            _browserPool.Release(page);
+                        }
                         _logger.Info($"[Collector:{workerId}] Ended");
                     }
                 }, cancellationToken);
             }
             return collectors;
+        }
+
+        private static async Task WaitForWorkersToStopAsync(TimeSpan timeout, params Task[][] taskGroups)
+        {
+            var tasks = new List<Task>();
+            foreach (var taskGroup in taskGroups)
+            {
+                tasks.AddRange(taskGroup);
+            }
+
+            var allTasks = Task.WhenAll(tasks);
+            try
+            {
+                var completed = await Task.WhenAny(allTasks, Task.Delay(timeout));
+                if (completed == allTasks)
+                {
+                    await allTasks;
+                }
+            }
+            catch
+            {
+                // Preserve the original exception from RunAsync while still giving workers a chance to exit.
+            }
         }
 
         private async Task<TPage> CollectOneAsync(

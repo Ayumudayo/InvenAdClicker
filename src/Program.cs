@@ -89,9 +89,12 @@ namespace InvenAdClicker
                     };
                 }
 
-                await using var browser = await playwright.Chromium.LaunchAsync(launchOptions);
+                Task<IBrowser> LaunchBrowserAsync()
+                    => playwright.Chromium.LaunchAsync(launchOptions);
+
+                await using var browser = await LaunchBrowserAsync();
                 await LoginVerifier.VerifyPlaywrightAsync(browser, settings, logger, encryption, cts.Token);
-                await using var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption);
+                await using var playwrightPool = new PlaywrightBrowserPool(browser, settings, logger, encryption, LaunchBrowserAsync);
                 await playwrightPool.InitializePoolAsync(cts.Token);
 
                 IAdCollector<IPage> adCollector = new PlaywrightAdCollector(settings, logger, progress);
