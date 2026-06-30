@@ -74,29 +74,17 @@ namespace InvenAdClicker.Services.Pipeline
 
             Task producerTask = ProduceUrlsAsync(urls, urlWriter, cancellationToken);
             Task[] clickers = StartClickers(clickerCount, clickReader, cancellationToken, idOffset: 0);
-            Task[] collectors = StartCollectors(collectorCount, urlReader, clickWriter, cancellationToken);
+            Task[] collectors = StartCollectors(
+                collectorCount,
+                urlReader,
+                clickWriter,
+                clickReader,
+                cancellationToken);
 
             try
             {
                 await producerTask;
                 await Task.WhenAll(collectors);
-                clickWriter.TryComplete();
-
-                // After collection completes, reuse the freed page permits to increase click throughput.
-                // This keeps total concurrency bounded by MaxDegreeOfParallelism while avoiding the long tail
-                // where a single clicker drains the remaining backlog.
-                if (clickerCount < mdp)
-                {
-                    var extraClickers = StartClickers(mdp - clickerCount, clickReader, cancellationToken, idOffset: clickerCount);
-                    if (extraClickers.Length > 0)
-                    {
-                        var merged = new Task[clickers.Length + extraClickers.Length];
-                        Array.Copy(clickers, 0, merged, 0, clickers.Length);
-                        Array.Copy(extraClickers, 0, merged, clickers.Length, extraClickers.Length);
-                        clickers = merged;
-                    }
-                }
-
                 await Task.WhenAll(clickers);
             }
             catch (OperationCanceledException)
@@ -142,8 +130,10 @@ namespace InvenAdClicker.Services.Pipeline
             int collectorCount,
             ChannelReader<string> urlReader,
             ChannelWriter<(string page, string link)> clickWriter,
+            ChannelReader<(string page, string link)> clickReader,
             CancellationToken cancellationToken)
         {
+            int remainingCollectors = collectorCount;
             var collectors = new Task[collectorCount];
             for (int i = 0; i < collectorCount; i++)
             {
@@ -157,6 +147,17 @@ namespace InvenAdClicker.Services.Pipeline
                         await foreach (var url in urlReader.ReadAllAsync(cancellationToken))
                         {
                             page = await CollectOneAsync(page, url, clickWriter, cancellationToken);
+                        }
+
+                        if (Interlocked.Decrement(ref remainingCollectors) == 0)
+                        {
+                            clickWriter.TryComplete();
+                        }
+
+                        _logger.Info($"[Collector:{workerId}] Switched to click queue");
+                        await foreach (var work in clickReader.ReadAllAsync(cancellationToken))
+                        {
+                            page = await ClickOneAsync(page, workerId, work.page, work.link, cancellationToken);
                         }
                     }
                     finally
