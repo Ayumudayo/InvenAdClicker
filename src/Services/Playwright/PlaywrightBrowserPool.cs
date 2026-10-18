@@ -16,9 +16,9 @@ namespace InvenAdClicker.Services.Playwright
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
         private readonly Encryption _encryption;
-        private IBrowser _browser;
+        private volatile IBrowser _browser;
         private readonly Func<Task<IBrowser>>? _browserFactory;
-        private readonly ConcurrentBag<IPage> _pool;
+        private readonly ConcurrentQueue<IPage> _pool;
         private readonly SemaphoreSlim _semaphore;
         private readonly SemaphoreSlim _browserRestartLock = new(1, 1);
         private string? _storageStatePath;
@@ -30,7 +30,7 @@ namespace InvenAdClicker.Services.Playwright
             _settings = settings;
             _logger = logger;
             _encryption = encryption;
-            _pool = new ConcurrentBag<IPage>();
+            _pool = new ConcurrentQueue<IPage>();
             _semaphore = new SemaphoreSlim(settings.MaxDegreeOfParallelism, settings.MaxDegreeOfParallelism);
         }
 
@@ -243,7 +243,7 @@ namespace InvenAdClicker.Services.Playwright
 
         private async Task ClosePooledPagesAsync()
         {
-            while (_pool.TryTake(out var page))
+            while (_pool.TryDequeue(out var page))
             {
                 try { await page.Context.CloseAsync(); }
                 catch { /* 무시 */ }
@@ -264,7 +264,7 @@ namespace InvenAdClicker.Services.Playwright
             try
             {
                 var page = await CreatePageAsync(cancellationToken);
-                _pool.Add(page);
+                _pool.Enqueue(page);
             }
             finally
             {
@@ -275,7 +275,7 @@ namespace InvenAdClicker.Services.Playwright
         public async Task<IPage> AcquireAsync(CancellationToken cancellationToken = default)
         {
             await _semaphore.WaitAsync(cancellationToken);
-            if (_pool.TryTake(out var page))
+            if (_pool.TryDequeue(out var page))
             {
                 return page;
             }
@@ -297,7 +297,7 @@ namespace InvenAdClicker.Services.Playwright
         {
             if (IsPageReusable(page))
             {
-                _pool.Add(page);
+                _pool.Enqueue(page);
                 _semaphore.Release();
             }
             else
@@ -372,7 +372,7 @@ namespace InvenAdClicker.Services.Playwright
         public void HandleBrowserCrash(Exception ex)
         {
             _logger.Error("브라우저 풀에서 예기치 못한 오류", ex);
-            while (_pool.TryTake(out var page))
+            while (_pool.TryDequeue(out var page))
             {
                 try { page.Context.CloseAsync().GetAwaiter().GetResult(); }
                 catch { /* 무시 */ }

@@ -8,7 +8,12 @@ namespace InvenAdClicker.Utils
 {
     public class Encryption
     {
-        private const string CredentialFile = "credentials.dat";
+        private readonly string _credentialFile;
+
+        public Encryption(string credentialFile = "credentials.dat")
+        {
+            _credentialFile = credentialFile;
+        }
 
         // 저장된 자격증명을 로드
         // 저장된 파일이 없거나 복호화에 실패하면 콘솔 입력을 통해 새로 받고 저장
@@ -52,27 +57,34 @@ namespace InvenAdClicker.Utils
         // 읽어 복호화 후 ID/PW를 분리 반환
         // 파일이 없거나 포맷이 잘못됐거나 복호화 실패 시 false 반환
         [SupportedOSPlatform("windows")]
-        private bool TryLoadCredentials(out string id, out string pw)
+        internal bool TryLoadCredentials(out string id, out string pw)
         {
             id = pw = string.Empty;
 
-            if (!File.Exists(CredentialFile))
+            if (!File.Exists(_credentialFile))
                 return false;
 
             try
             {
-                byte[] encrypted = File.ReadAllBytes(CredentialFile);
+                byte[] encrypted = File.ReadAllBytes(_credentialFile);
                 byte[] decrypted = ProtectedData.Unprotect(
                     encrypted, null, DataProtectionScope.CurrentUser);
 
-                string txt = Encoding.UTF8.GetString(decrypted);
-                var parts = txt.Split(new[] { ':' }, 2);
-                if (parts.Length != 2)
-                    return false;
+                try
+                {
+                    string txt = Encoding.UTF8.GetString(decrypted);
+                    var parts = txt.Split(new[] { ':' }, 2);
+                    if (parts.Length != 2)
+                        return false;
 
-                id = parts[0];
-                pw = parts[1];
-                return true;
+                    id = parts[0];
+                    pw = parts[1];
+                    return true;
+                }
+                finally
+                {
+                    Array.Clear(decrypted, 0, decrypted.Length);
+                }
             }
             catch
             {
@@ -83,14 +95,21 @@ namespace InvenAdClicker.Utils
 
         /// 평문 문자열을 암호화하여 파일에 저장
         [SupportedOSPlatform("windows")]
-        private void SaveCredentials(string id, string pw)
+        internal void SaveCredentials(string id, string pw)
         {
             string txt = $"{id}:{pw}";
             byte[] plain = Encoding.UTF8.GetBytes(txt);
-            byte[] encrypted = ProtectedData.Protect(
-                plain, null, DataProtectionScope.CurrentUser);
+            try
+            {
+                byte[] encrypted = ProtectedData.Protect(
+                    plain, null, DataProtectionScope.CurrentUser);
 
-            File.WriteAllBytes(CredentialFile, encrypted);
+                File.WriteAllBytes(_credentialFile, encrypted);
+            }
+            finally
+            {
+                Array.Clear(plain, 0, plain.Length);
+            }
         }
 
         // 콘솔에서 비밀번호 입력 시 마스킹 처리

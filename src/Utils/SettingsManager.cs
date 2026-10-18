@@ -24,6 +24,12 @@ namespace InvenAdClicker.Utils
 
         public void ValidateAndUpdateSettings()
         {
+            UpdateSchemaFile();
+            ValidateRuntimeSettings();
+        }
+
+        public void UpdateSchemaFile()
+        {
             try
             {
                 var defaultTemplate = new AppSettings
@@ -121,87 +127,6 @@ namespace InvenAdClicker.Utils
                     _logger.Info("appsettings.json AppSettings 스키마/정렬을 최신 상태로 갱신합니다.");
                 }
 
-                // 사용자 값은 파일에 쓰지 않고, 런타임에서만 최소치 보정
-                void EnsureMinRuntime(string name, int min, Func<int> getter, Action<int> setter)
-                {
-                    var v = getter();
-                    if (v < min)
-                    {
-                        _logger.Warn($"AppSettings.{name} 값 {v}가 최소값 {min}보다 작아 런타임에서 {min}으로 보정합니다.(파일 미변경)");
-                        setter(min);
-                    }
-                }
-
-                EnsureMinRuntime(nameof(_settings.MaxDegreeOfParallelism), 1,
-                    () => _settings.MaxDegreeOfParallelism, v => _settings.MaxDegreeOfParallelism = v);
-                EnsureMinRuntime(nameof(_settings.IframeTimeoutMilliSeconds), 100,
-                    () => _settings.IframeTimeoutMilliSeconds, v => _settings.IframeTimeoutMilliSeconds = v);
-                EnsureMinRuntime(nameof(_settings.PageLoadTimeoutMilliseconds), 1000,
-                    () => _settings.PageLoadTimeoutMilliseconds, v => _settings.PageLoadTimeoutMilliseconds = v);
-                EnsureMinRuntime(nameof(_settings.CommandTimeoutMilliSeconds), 1000,
-                    () => _settings.CommandTimeoutMilliSeconds, v => _settings.CommandTimeoutMilliSeconds = v);
-                EnsureMinRuntime(nameof(_settings.PostMessageBufferMilliseconds), 200,
-                    () => _settings.PostMessageBufferMilliseconds, v => _settings.PostMessageBufferMilliseconds = v);
-                EnsureMinRuntime(nameof(_settings.CollectionAttempts), 1,
-                    () => _settings.CollectionAttempts, v => _settings.CollectionAttempts = v);
-                EnsureMinRuntime(nameof(_settings.MaxClickAttempts), 1,
-                    () => _settings.MaxClickAttempts, v => _settings.MaxClickAttempts = v);
-                // 클릭 딜레이는 200ms 미만이면 실패로 간주
-                if (_settings.ClickDelayMilliseconds < 200)
-                {
-                    var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 200ms보다 작습니다. 클릭 간 딜레이는 200ms 이상이어야 합니다.";
-                    throw new ApplicationException(msg);
-                }
-
-                if (_settings.MaxDegreeOfParallelism > 10)
-                {
-                    _logger.Warn($"AppSettings.MaxDegreeOfParallelism 값 {_settings.MaxDegreeOfParallelism}이 너무 커서 10으로 제한합니다.");
-                    _settings.MaxDegreeOfParallelism = 10;
-                }
-
-                if ((_settings.TargetUrls == null) || _settings.TargetUrls.Length == 0)
-                {
-                    _logger.Warn("AppSettings.TargetUrls가 비어 있습니다. 수행할 작업이 없습니다.");
-                }
-                else
-                {
-                    var validUrls = new System.Collections.Generic.List<string>();
-                    var seen = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-                    var duplicates = new System.Collections.Generic.List<string>();
-                    foreach (var url in _settings.TargetUrls)
-                    {
-                        var trimmed = url?.Trim();
-                        if (string.IsNullOrWhiteSpace(trimmed))
-                        {
-                            continue;
-                        }
-
-                        if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
-                        {
-                            if (seen.Add(trimmed))
-                            {
-                                validUrls.Add(trimmed);
-                            }
-                            else
-                            {
-                                duplicates.Add(trimmed);
-                            }
-                        }
-                        else
-                        {
-                            _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {trimmed}");
-                        }
-                    }
-
-                    if (duplicates.Count > 0)
-                    {
-                        var uniqueDups = duplicates.Distinct(StringComparer.Ordinal).Take(5).ToArray();
-                        var sample = uniqueDups.Length > 0 ? string.Join(", ", uniqueDups) : "-";
-                        _logger.Warn($"중복 URL {duplicates.Count}개를 런타임에서 제외했습니다.(파일 미변경) 예: {sample}");
-                    }
-                    _settings.TargetUrls = validUrls.ToArray();
-                }
-
                 if (changed)
                 {
                     AtomicWrite(SettingsFileName, root.ToJsonString(jsonOptions));
@@ -211,6 +136,91 @@ namespace InvenAdClicker.Utils
             catch (Exception ex)
             {
                 _logger.Warn($"설정 파일을 자동으로 갱신하지 못했습니다: {ex.Message}");
+            }
+        }
+
+        public void ValidateRuntimeSettings()
+        {
+            // 사용자 값은 파일에 쓰지 않고, 런타임에서만 최소치 보정
+            void EnsureMinRuntime(string name, int min, Func<int> getter, Action<int> setter)
+            {
+                var v = getter();
+                if (v < min)
+                {
+                    _logger.Warn($"AppSettings.{name} 값 {v}가 최소값 {min}보다 작아 런타임에서 {min}으로 보정합니다.(파일 미변경)");
+                    setter(min);
+                }
+            }
+
+            EnsureMinRuntime(nameof(_settings.MaxDegreeOfParallelism), 1,
+                () => _settings.MaxDegreeOfParallelism, v => _settings.MaxDegreeOfParallelism = v);
+            EnsureMinRuntime(nameof(_settings.IframeTimeoutMilliSeconds), 100,
+                () => _settings.IframeTimeoutMilliSeconds, v => _settings.IframeTimeoutMilliSeconds = v);
+            EnsureMinRuntime(nameof(_settings.PageLoadTimeoutMilliseconds), 1000,
+                () => _settings.PageLoadTimeoutMilliseconds, v => _settings.PageLoadTimeoutMilliseconds = v);
+            EnsureMinRuntime(nameof(_settings.CommandTimeoutMilliSeconds), 1000,
+                () => _settings.CommandTimeoutMilliSeconds, v => _settings.CommandTimeoutMilliSeconds = v);
+            EnsureMinRuntime(nameof(_settings.PostMessageBufferMilliseconds), 200,
+                () => _settings.PostMessageBufferMilliseconds, v => _settings.PostMessageBufferMilliseconds = v);
+            EnsureMinRuntime(nameof(_settings.CollectionAttempts), 1,
+                () => _settings.CollectionAttempts, v => _settings.CollectionAttempts = v);
+            EnsureMinRuntime(nameof(_settings.MaxClickAttempts), 1,
+                () => _settings.MaxClickAttempts, v => _settings.MaxClickAttempts = v);
+
+            // 클릭 딜레이는 200ms 미만이면 예외 발생 (삼키지 않음)
+            if (_settings.ClickDelayMilliseconds < 200)
+            {
+                var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 200ms보다 작습니다. 클릭 간 딜레이는 200ms 이상이어야 합니다.";
+                throw new InvalidOperationException(msg);
+            }
+
+            if (_settings.MaxDegreeOfParallelism > 10)
+            {
+                _logger.Warn($"AppSettings.MaxDegreeOfParallelism 값 {_settings.MaxDegreeOfParallelism}이 너무 커서 10으로 제한합니다.");
+                _settings.MaxDegreeOfParallelism = 10;
+            }
+
+            if ((_settings.TargetUrls == null) || _settings.TargetUrls.Length == 0)
+            {
+                _logger.Warn("AppSettings.TargetUrls가 비어 있습니다. 수행할 작업이 없습니다.");
+            }
+            else
+            {
+                var validUrls = new System.Collections.Generic.List<string>();
+                var seen = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                var duplicates = new System.Collections.Generic.List<string>();
+                foreach (var url in _settings.TargetUrls)
+                {
+                    var trimmed = url?.Trim();
+                    if (string.IsNullOrWhiteSpace(trimmed))
+                    {
+                        continue;
+                    }
+
+                    if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+                    {
+                        if (seen.Add(trimmed))
+                        {
+                            validUrls.Add(trimmed);
+                        }
+                        else
+                        {
+                            duplicates.Add(trimmed);
+                        }
+                    }
+                    else
+                    {
+                        _logger.Warn($"유효하지 않은 URL이 제외되었습니다: {trimmed}");
+                    }
+                }
+
+                if (duplicates.Count > 0)
+                {
+                    var uniqueDups = duplicates.Distinct(StringComparer.Ordinal).Take(5).ToArray();
+                    var sample = uniqueDups.Length > 0 ? string.Join(", ", uniqueDups) : "-";
+                    _logger.Warn($"중복 URL {duplicates.Count}개를 런타임에서 제외했습니다.(파일 미변경) 예: {sample}");
+                }
+                _settings.TargetUrls = validUrls.ToArray();
             }
         }
 

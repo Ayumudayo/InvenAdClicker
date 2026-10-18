@@ -75,13 +75,13 @@ namespace InvenAdClicker.Utils
                             throw new ApplicationException("로그인 상태를 판별하지 못했습니다.");
                     }
                 }
-                catch (TimeoutException ex)
+                catch (Exception ex) when (ex is TimeoutException || (ex is PlaywrightException pe && pe.Message.Contains("Timeout", StringComparison.OrdinalIgnoreCase)))
                 {
                     if (attempts >= maxLoginAttempts)
                     {
                         throw new ApplicationException("로그인 검증이 시간 초과로 실패했습니다.", ex);
                     }
-                    await Task.Delay(1000, cts.Token);
+                    await Task.Delay(1000 * attempts, cts.Token);
                 }
             }
         }
