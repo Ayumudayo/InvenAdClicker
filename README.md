@@ -91,13 +91,23 @@
 
 표의 `Iter`는 해당 URL에서 **광고 링크 수집을 시도한 횟수**(= `CollectionAttempts` 누적)를 의미합니다.
 
-### 3. 실행
+### 3. 빌드 및 배포
+
+모든 종속 DLL이 번들링된 단일 실행 파일(`InvenAdClicker.exe`)을 생성하려면 다음 명령어를 실행합니다:
+
+```shell
+dotnet publish InvenAdClicker.csproj -c Release -o ./publish
+```
+
+출력 폴더(`publish`)에 개별 DLL 없이 단일 `InvenAdClicker.exe`와 설정 파일(`appsettings.json`), 런타임 스크립트(`playwright.ps1`)만 생성됩니다.
+
+### 4. 실행
 
 `InvenAdClicker.exe`를 실행합니다.
 
 - **최초 실행 시**: 콘솔 창에 인벤 ID와 비밀번호를 입력하라는 메시지가 나타납니다. 입력한 정보는 PC에 암호화되어 안전하게 저장되며, 다음 실행부터는 자동으로 로그인됩니다.
 
-### 4. 종료
+### 5. 종료
 
 - 모든 작업이 완료되면 프로그램은 자동으로 종료됩니다.
 - 즉시 종료하려면 콘솔 창에서 `Ctrl + C`를 누르세요.

@@ -44,15 +44,15 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish
-        run: dotnet publish InvenAdClicker.csproj -c Release -o ./publish /p:Version=${{ env.VERSION }}
+        run: dotnet publish InvenAdClicker.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o ./publish /p:Version=${{ env.VERSION }}
 
       - name: Verify publish assets exist
         shell: pwsh
         run: |
           $required = @(
-            '.\\publish\\InvenAdClicker.dll',
             '.\\publish\\InvenAdClicker.exe',
-            '.\\publish\\playwright.ps1'
+            '.\\publish\\playwright.ps1',
+            '.\\publish\\appsettings.json'
           )
           $missing = @()
           foreach ($f in $required) { if (-not (Test-Path $f)) { $missing += $f } }
