@@ -27,7 +27,7 @@ namespace InvenAdClicker.Tests.Services.Playwright
             {
                 CollectionAttempts = 1,
                 PageLoadTimeoutMilliseconds = 5000,
-                IframeTimeoutMilliSeconds = 1000,
+                IframeTimeoutMilliseconds = 1000,
                 PostMessageBufferMilliseconds = 0
             };
             _progress.Initialize(new[] { "https://test.inven.co.kr/" });

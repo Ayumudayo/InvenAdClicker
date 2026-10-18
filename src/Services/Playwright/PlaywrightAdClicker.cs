@@ -30,6 +30,11 @@ namespace InvenAdClicker.Services.Playwright
                 return page;
             }
 
+            if (_settings.MaxClickAttempts <= 0)
+            {
+                throw new ArgumentException("MaxClickAttempts는 1 이상이어야 합니다.");
+            }
+
             for (int i = 0; i < _settings.MaxClickAttempts; i++)
             {
                 try
@@ -73,7 +78,8 @@ namespace InvenAdClicker.Services.Playwright
                     }
                 }
             }
-            return page; // 여까지 오면 큰일남
+
+            throw new InvalidOperationException($"광고 클릭 시도가 비정상 종료되었습니다: '{link}'");
         }
     }
 }

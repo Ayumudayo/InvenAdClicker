@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace InvenAdClicker.Utils
 {
@@ -113,6 +114,11 @@ namespace InvenAdClicker.Utils
 
         public void PrintProgress()
         {
+            PrintProgressAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task PrintProgressAsync(CancellationToken cancellationToken = default)
+        {
             bool redirected = Console.IsOutputRedirected;
             
             if (_map.IsEmpty)
@@ -170,12 +176,19 @@ namespace InvenAdClicker.Utils
                         }
                     }
 
-                    if (_shouldStopProgress || done)
+                    if (_shouldStopProgress || done || cancellationToken.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    Thread.Sleep(RefreshRateMs);
+                    try
+                    {
+                        await Task.Delay(RefreshRateMs, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                 }
             }
             finally

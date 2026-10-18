@@ -65,7 +65,7 @@ namespace InvenAdClicker.Services.Playwright
                     sw.Restart();
                     await page.WaitForSelectorAsync("iframe", new PageWaitForSelectorOptions
                     {
-                        Timeout = _settings.IframeTimeoutMilliSeconds,
+                        Timeout = _settings.IframeTimeoutMilliseconds,
                         State = WaitForSelectorState.Attached
                     });
                     iframeWaitMs = sw.ElapsedMilliseconds;
@@ -79,7 +79,7 @@ namespace InvenAdClicker.Services.Playwright
                 {
                     iframeTimedOut = true;
                     iframeWaitMs = sw.ElapsedMilliseconds;
-                    _logger.Debug($"{url}에서 {_settings.IframeTimeoutMilliSeconds}ms 내에 iframe 미검출");
+                    _logger.Debug($"{url}에서 {_settings.IframeTimeoutMilliseconds}ms 내에 iframe 미검출");
                 }
 
                 // Optimization: Collect all links from all frames in parallel using JS evaluation where possible

@@ -154,12 +154,12 @@ namespace InvenAdClicker.Utils
 
             EnsureMinRuntime(nameof(_settings.MaxDegreeOfParallelism), 1,
                 () => _settings.MaxDegreeOfParallelism, v => _settings.MaxDegreeOfParallelism = v);
-            EnsureMinRuntime(nameof(_settings.IframeTimeoutMilliSeconds), 100,
-                () => _settings.IframeTimeoutMilliSeconds, v => _settings.IframeTimeoutMilliSeconds = v);
+            EnsureMinRuntime(nameof(_settings.IframeTimeoutMilliseconds), 100,
+                () => _settings.IframeTimeoutMilliseconds, v => _settings.IframeTimeoutMilliseconds = v);
             EnsureMinRuntime(nameof(_settings.PageLoadTimeoutMilliseconds), 1000,
                 () => _settings.PageLoadTimeoutMilliseconds, v => _settings.PageLoadTimeoutMilliseconds = v);
-            EnsureMinRuntime(nameof(_settings.CommandTimeoutMilliSeconds), 1000,
-                () => _settings.CommandTimeoutMilliSeconds, v => _settings.CommandTimeoutMilliSeconds = v);
+            EnsureMinRuntime(nameof(_settings.CommandTimeoutMilliseconds), 1000,
+                () => _settings.CommandTimeoutMilliseconds, v => _settings.CommandTimeoutMilliseconds = v);
             EnsureMinRuntime(nameof(_settings.PostMessageBufferMilliseconds), 200,
                 () => _settings.PostMessageBufferMilliseconds, v => _settings.PostMessageBufferMilliseconds = v);
             EnsureMinRuntime(nameof(_settings.CollectionAttempts), 1,

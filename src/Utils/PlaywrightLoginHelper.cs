@@ -16,9 +16,6 @@ namespace InvenAdClicker.Utils
             new("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8")
         };
 
-        internal static void LoadCredentials(Encryption encryption, out string id, out string password) =>
-            encryption.LoadAndValidateCredentials(out id, out password);
-
         internal static readonly string LoginStateWaitScript = $@"() => {{
             const notice = document.querySelector('#notice');
             if (notice && notice.textContent.includes('{EscapedLoginErrorMessage}')) return 'invalid_credentials';

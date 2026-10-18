@@ -66,9 +66,9 @@ namespace InvenAdClicker.Tests.Utils
             var settings = new AppSettings
             {
                 MaxDegreeOfParallelism = 0,
-                IframeTimeoutMilliSeconds = 50,
+                IframeTimeoutMilliseconds = 50,
                 PageLoadTimeoutMilliseconds = 500,
-                CommandTimeoutMilliSeconds = 500,
+                CommandTimeoutMilliseconds = 500,
                 PostMessageBufferMilliseconds = 100,
                 CollectionAttempts = 0,
                 MaxClickAttempts = 0,
@@ -79,9 +79,9 @@ namespace InvenAdClicker.Tests.Utils
             manager.ValidateRuntimeSettings();
 
             Assert.That(settings.MaxDegreeOfParallelism, Is.EqualTo(1));
-            Assert.That(settings.IframeTimeoutMilliSeconds, Is.EqualTo(100));
+            Assert.That(settings.IframeTimeoutMilliseconds, Is.EqualTo(100));
             Assert.That(settings.PageLoadTimeoutMilliseconds, Is.EqualTo(1000));
-            Assert.That(settings.CommandTimeoutMilliSeconds, Is.EqualTo(1000));
+            Assert.That(settings.CommandTimeoutMilliseconds, Is.EqualTo(1000));
             Assert.That(settings.PostMessageBufferMilliseconds, Is.EqualTo(200));
             Assert.That(settings.CollectionAttempts, Is.EqualTo(1));
             Assert.That(settings.MaxClickAttempts, Is.EqualTo(1));

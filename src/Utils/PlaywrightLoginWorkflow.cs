@@ -54,9 +54,9 @@ namespace InvenAdClicker.Utils
                 try
                 {
                     await page.GotoAsync(PlaywrightLoginHelper.LoginUrl, new PageGotoOptions { Timeout = settings.PageLoadTimeoutMilliseconds, WaitUntil = WaitUntilState.DOMContentLoaded });
-                    await page.FillAsync("#user_id", id, new PageFillOptions { Timeout = (float)settings.CommandTimeoutMilliSeconds });
-                    await page.FillAsync("#password", pw, new PageFillOptions { Timeout = (float)settings.CommandTimeoutMilliSeconds });
-                    await page.ClickAsync("#loginBtn", new PageClickOptions { Timeout = (float)settings.CommandTimeoutMilliSeconds });
+                    await page.FillAsync("#user_id", id, new PageFillOptions { Timeout = (float)settings.CommandTimeoutMilliseconds });
+                    await page.FillAsync("#password", pw, new PageFillOptions { Timeout = (float)settings.CommandTimeoutMilliseconds });
+                    await page.ClickAsync("#loginBtn", new PageClickOptions { Timeout = (float)settings.CommandTimeoutMilliseconds });
 
                     await page.WaitForFunctionAsync(loginStateWaitScript, null, new PageWaitForFunctionOptions { Timeout = (float)settings.PageLoadTimeoutMilliseconds });
                     var loginState = await page.EvaluateAsync<string>(loginStateEvaluationScript);
@@ -66,7 +66,7 @@ namespace InvenAdClicker.Utils
                         case "invalid_credentials":
                             throw new ApplicationException("로그인에 실패했습니다. 자격증명을 확인해 주세요.");
                         case "modal":
-                            await PlaywrightLoginHelper.DismissLoginModalAsync(page, settings.CommandTimeoutMilliSeconds);
+                            await PlaywrightLoginHelper.DismissLoginModalAsync(page, settings.CommandTimeoutMilliseconds);
                             await page.WaitForFunctionAsync($"() => window.location.href !== '{PlaywrightLoginHelper.LoginUrl}'", null, new PageWaitForFunctionOptions { Timeout = (float)settings.PageLoadTimeoutMilliseconds });
                             return;
                         case "redirected":
