@@ -234,7 +234,19 @@ namespace InvenAdClicker.Utils
                 bool hasExisting = false;
                 if (existing != null)
                 {
-                    hasExisting = existing.TryGetPropertyValue(prop.Name, out existingValue);
+                    if (!existing.TryGetPropertyValue(prop.Name, out existingValue))
+                    {
+                        var match = existing.FirstOrDefault(kvp => string.Equals(kvp.Key, prop.Name, StringComparison.OrdinalIgnoreCase));
+                        if (match.Key != null)
+                        {
+                            existingValue = match.Value;
+                            hasExisting = true;
+                        }
+                    }
+                    else
+                    {
+                        hasExisting = true;
+                    }
                 }
 
                 if (hasExisting && existingValue == null)

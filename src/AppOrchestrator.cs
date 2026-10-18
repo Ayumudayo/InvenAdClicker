@@ -38,6 +38,8 @@ namespace InvenAdClicker
         {
             var stopwatch = Stopwatch.StartNew();
 
+            bool runtimeInstalledNeedsRestart = false;
+
             _settingsManager.ValidateAndUpdateSettings();
             _progress.Initialize(_settings.TargetUrls ?? Array.Empty<string>());
 
@@ -47,9 +49,9 @@ namespace InvenAdClicker
 
                 if (await PlaywrightBootstrap.EnsureInstalledIfMissingAsync(_logger))
                 {
+                    runtimeInstalledNeedsRestart = true;
                     Console.WriteLine();
-                    Console.WriteLine("Playwright 런타임을 설치했습니다. 프로그램을 종료한 뒤 다시 시작해 주세요.");
-                    WaitForKeyPressIfInteractive();
+                    Console.WriteLine("Playwright 런타임을 설치했습니다. 프로그램을 다시 시작해 주세요.");
                     return 0;
                 }
 
@@ -126,12 +128,15 @@ namespace InvenAdClicker
                 SafeSetCursorVisible(true);
 
                 stopwatch.Stop();
-                int minutes = (int)stopwatch.Elapsed.TotalMinutes;
-                int seconds = stopwatch.Elapsed.Seconds;
+                if (!runtimeInstalledNeedsRestart)
+                {
+                    int minutes = (int)stopwatch.Elapsed.TotalMinutes;
+                    int seconds = stopwatch.Elapsed.Seconds;
 
-                Console.WriteLine();
-                Console.WriteLine($"총 실행 시간: {minutes}분 {seconds}초");
-                Console.WriteLine("작업 완료.");
+                    Console.WriteLine();
+                    Console.WriteLine($"총 실행 시간: {minutes}분 {seconds}초");
+                    Console.WriteLine("작업 완료.");
+                }
                 WaitForKeyPressIfInteractive();
             }
         }
