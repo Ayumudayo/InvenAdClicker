@@ -30,15 +30,22 @@ jobs:
       - name: Build
         run: dotnet build InvenAdClicker.sln --configuration Release --no-restore
 
-      - name: Test (skip if no test projects)
+      - name: Install Playwright Chromium (if needed)
         shell: pwsh
         run: |
-          $testProjects = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { (Select-String -Path $_.FullName -Pattern '<PackageReference Include="(xunit|nunit|MSTest)"' -Quiet) }
-          if ($testProjects) {
-            dotnet test InvenAdClicker.sln --no-build --no-restore --configuration Release --verbosity normal
-          } else {
-            Write-Host 'No test projects found. Skipping dotnet test.'
+          $playwrightPs = "bin/Release/net8.0/playwright.ps1"
+          if (Test-Path $playwrightPs) {
+            pwsh $playwrightPs install chromium
           }
+
+      - name: Run Tests with Code Coverage
+        shell: pwsh
+        run: |
+          dotnet test tests/InvenAdClicker.Tests/InvenAdClicker.Tests.csproj `
+            --no-build `
+            --configuration Release `
+            --verbosity normal `
+            --collect:"XPlat Code Coverage"
 
       - name: Publish (Release)
         run: dotnet publish InvenAdClicker.sln -c Release -o ./publish --no-build --no-restore

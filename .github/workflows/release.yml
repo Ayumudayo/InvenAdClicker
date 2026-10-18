@@ -51,6 +51,7 @@ jobs:
         run: |
           $required = @(
             '.\\publish\\InvenAdClicker.dll',
+            '.\\publish\\InvenAdClicker.exe',
             '.\\publish\\playwright.ps1'
           )
           $missing = @()
@@ -72,11 +73,21 @@ jobs:
           filename: InvenAdClicker-${{ env.VERSION }}.zip
           directory: ./publish
 
+      - name: Generate Checksums
+        shell: pwsh
+        run: |
+          $zipPath = ".\publish\InvenAdClicker-${{ env.VERSION }}.zip"
+          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+          "$hash  InvenAdClicker-${{ env.VERSION }}.zip" | Out-File -Encoding utf8 .\publish\checksums.txt
+          Write-Host "SHA256: $hash"
+
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          artifacts: "./publish/InvenAdClicker-${{ env.VERSION }}.zip"
+          artifacts: |
+            ./publish/InvenAdClicker-${{ env.VERSION }}.zip
+            ./publish/checksums.txt
           generateReleaseNotes: true

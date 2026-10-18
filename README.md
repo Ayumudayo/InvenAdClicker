@@ -46,10 +46,10 @@
   "AppSettings": {
     "MaxDegreeOfParallelism": 3,
     "DryRun": false,
-    "IframeTimeoutMilliSeconds": 5000,
+    "IframeTimeoutMilliseconds": 5000,
     "ClickDelayMilliseconds": 300,
     "PageLoadTimeoutMilliseconds": 5000,
-    "CommandTimeoutMilliSeconds": 5000,
+    "CommandTimeoutMilliseconds": 5000,
     "PostMessageBufferMilliseconds": 1000,
     "CollectionAttempts": 1,
     "MaxClickAttempts": 2,
@@ -70,14 +70,14 @@
 }
 ```
 
-- `MaxDegreeOfParallelism`: 동시에 사용할 브라우저 페이지(워크) 수 상한입니다.
+- `MaxDegreeOfParallelism`: 동시에 사용할 브라우저 페이지(워크) 수 상한입니다 (최대 10).
 - `DryRun`: `true`면 실제 클릭/이동을 최소화하고 로그 중심으로 동작합니다.
-- `ClickDelayMilliseconds`: 클릭 사이의 대기 시간(밀리초)입니다. 너무 작게 설정하면 서버에 과부하를 줄 수 있습니다.
+- `ClickDelayMilliseconds`: 클릭 사이의 대기 시간(밀리초)입니다. 최소 200ms 이상이어야 합니다.
 - `PageLoadTimeoutMilliseconds`: 페이지 로드 타임아웃입니다.
-- `CommandTimeoutMilliSeconds`: Playwright 명령 타임아웃 최대 대기 시간입니다.
-- `IframeTimeoutMilliSeconds`: `iframe` 감지 대기 타임아웃입니다.
+- `CommandTimeoutMilliseconds`: Playwright 명령 타임아웃 최대 대기 시간입니다. (구 `CommandTimeoutMilliSeconds` 호환 지원)
+- `IframeTimeoutMilliseconds`: `iframe` 감지 대기 타임아웃입니다. (구 `IframeTimeoutMilliSeconds` 호환 지원)
 - `PostMessageBufferMilliseconds`: 광고 스크립트/메시지 수집을 위한 추가 버퍼 대기 시간입니다.
-- `CollectionAttempts` / `MaxClickAttempts`: 수집·클릭 재시도 횟수입니다.
+- `CollectionAttempts` / `MaxClickAttempts`: 수집·클릭 시도 횟수입니다.
 - `TargetUrls`: 수집/클릭을 진행할 URL 목록입니다.
 
 #### 디버그 옵션
