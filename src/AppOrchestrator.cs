@@ -15,7 +15,6 @@ namespace InvenAdClicker
     {
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
-        private readonly Encryption _encryption;
         private readonly ProgressTracker _progress;
         private readonly SettingsManager _settingsManager;
         private readonly IServiceScopeFactory _scopeFactory;
@@ -24,7 +23,6 @@ namespace InvenAdClicker
         public AppOrchestrator(
             AppSettings settings,
             IAppLogger logger,
-            Encryption encryption,
             ProgressTracker progress,
             SettingsManager settingsManager,
             IServiceScopeFactory scopeFactory,
@@ -32,7 +30,6 @@ namespace InvenAdClicker
         {
             _settings = settings;
             _logger = logger;
-            _encryption = encryption;
             _progress = progress;
             _settingsManager = settingsManager;
             _scopeFactory = scopeFactory;
@@ -111,8 +108,8 @@ namespace InvenAdClicker
             {
                 session = scope.ServiceProvider.GetRequiredService<PlaywrightSession>();
                 await session.InitializeAsync(smokeTest: false, cancellationToken);
-                await LoginVerifier.VerifyPlaywrightAsync(session.Browser, _settings, _logger, _encryption, cancellationToken);
                 var pool = scope.ServiceProvider.GetRequiredService<IBrowserPool<IPage>>();
+                // The pool verifies login and captures authenticated state once.
                 await pool.InitializePoolAsync(cancellationToken);
                 var runner = scope.ServiceProvider.GetRequiredService<IPipelineRunner>();
                 Console.WriteLine("초기화 성공. 프로세스를 시작합니다...");

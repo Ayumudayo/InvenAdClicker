@@ -94,7 +94,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\playwright.ps1 install chr
 | `CommandTimeoutMilliseconds` | `5000` | 명령 타임아웃, 최소 1000ms |
 | `IframeTimeoutMilliseconds` | `5000` | iframe 대기, 최소 100ms |
 | `PostMessageBufferMilliseconds` | `1000` | 메시지 수집 추가 대기, 최소 200ms |
-| `CollectionAttempts` | `1` | URL당 수집 횟수, 최소 1회 |
+| `CollectionAttempts` | `1` | URL당 새 탐색으로 수집하는 횟수, 최소 1회 |
 | `MaxClickAttempts` | `2` | 링크당 클릭 시도 상한, 최소 1회 |
 | `TargetUrls` | 예시 참고 | HTTP/HTTPS URL만 사용하며 공백·중복·잘못된 URL 제외 |
 
@@ -139,7 +139,7 @@ publish는 `PublishSelfContained=true`로 .NET 런타임을 포함합니다. 일
 
 새 위치에 파일이 있으면 그 파일을 사용합니다. 없으면 실행 파일 옆의 기존 파일을 우선 복사하고, 거기에도 없으면 실행 작업 디렉터리를 확인합니다. 후보가 여럿이면 우선순위와 충돌을 로그에 기록합니다. 원본은 남기고 기존 대상은 덮어쓰지 않습니다. 자격 증명은 현재 Windows 사용자에게 암호화된 바이트 그대로 복사하며, 이전 로그는 이동하거나 병합하지 않습니다.
 
-인증된 브라우저 상태는 실행 중 메모리로 전달합니다. 세션 전달을 위해 새 `inven_auth_*.json`을 임시 폴더에 만들지 않습니다.
+풀 초기화에서 한 번 로그인·검증한 뒤, 인증된 브라우저 상태를 메모리로 작업자에게 전달합니다. 각 수집 시도는 새 탐색과 설정된 대기 버퍼를 사용하며, 다음 탐색 직전의 불필요한 새로고침은 생략합니다. 세션 전달을 위해 새 `inven_auth_*.json`을 임시 폴더에 만들지 않습니다.
 
 ### 5. 종료
 
@@ -173,6 +173,8 @@ pwsh ./scripts/verify-publish.ps1 -PublishDirectory ./publish -InstallChromium
 `verify-publish.ps1`는 필수 배포 파일과 Playwright CLI를 확인하고, 해당 버전의 Chromium을 설치한 뒤 `InvenAdClicker.exe --smoke-test`를 실행합니다. 브라우저가 이미 설치됐다면 `-InstallChromium`을 생략할 수 있습니다. 스모크 테스트는 배포 템플릿과 격리된 데이터 경로에서 설정·DI·드라이버·브라우저를 검증하고 `about:blank`에서 JavaScript 계산을 수행합니다. 실제 사용자 파일 이전이나 계정 입력, 인벤 접속 없이 종료 코드 0이면 성공입니다.
 
 CI는 테스트 결과·커버리지 요약·배포물을 보관합니다. 태그 릴리스는 스모크 테스트를 통과한 배포 폴더 전체를 ZIP으로 묶고 ZIP의 SHA256을 `checksums.txt`에 첨부합니다. `docs/`와 그 하위 계획 문서는 Git 추적 대상에서 제외합니다.
+
+Chromium 통합 시험은 브라우저 설치 후 `INVEN_TEST_CHROMIUM=1`로 활성화합니다. 저장된 계정으로 실제 인벤을 확인하는 시험은 `INVEN_LIVE_DATA_DIRECTORY`를 지정한 경우에만 실행하며, 격리된 설정 복사본과 DryRun을 사용합니다.
 
 ## 트러블슈팅
 

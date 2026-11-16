@@ -48,10 +48,11 @@ namespace InvenAdClicker.Services.Playwright
                 long bufferMs = 0;
                 long extractMs = 0;
                 long extrasMs = 0;
-                long reloadMs = 0;
                 bool iframeTimedOut = false;
 
                 var sw = Stopwatch.StartNew();
+                // Every attempt starts with a fresh navigation. An extra reload
+                // between attempts would be discarded by the next GotoAsync.
                 await page.GotoAsync(url, new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
@@ -144,24 +145,13 @@ namespace InvenAdClicker.Services.Playwright
                     _logger.Debug($"postMessage 수집 링크 병합 실패: {ex.Message}");
                 }
 
-                if (i < _settings.CollectionAttempts - 1)
-                {
-                    sw.Restart();
-                    await page.ReloadAsync(new PageReloadOptions
-                    {
-                        WaitUntil = WaitUntilState.DOMContentLoaded,
-                        Timeout = _settings.PageLoadTimeoutMilliseconds
-                    });
-                    reloadMs = sw.ElapsedMilliseconds;
-                }
-
                 swAttempt.Stop();
                 var routeStats = PlaywrightPageTelemetry.SnapshotRouteStats(page);
                 var added = Math.Max(0, allLinks.Count - attemptStartLinks);
                 _logger.Info(
                     $"[perf][collect] url='{url}' attempt={i + 1}/{_settings.CollectionAttempts} " +
                     $"goto={gotoMs}ms iframeWait={iframeWaitMs}ms{(iframeTimedOut ? "(timeout)" : string.Empty)} " +
-                    $"buffer={bufferMs}ms extract={extractMs}ms extras={extrasMs}ms reload={reloadMs}ms " +
+                    $"buffer={bufferMs}ms extract={extractMs}ms extras={extrasMs}ms " +
                     $"links+={added} linksTotal={allLinks.Count} route={routeStats.FormatCompact()} total={swAttempt.ElapsedMilliseconds}ms");
             }
 

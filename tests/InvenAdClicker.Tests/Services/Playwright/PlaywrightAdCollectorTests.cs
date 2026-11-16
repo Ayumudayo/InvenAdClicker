@@ -14,6 +14,23 @@ namespace InvenAdClicker.Tests.Services.Playwright
     [TestFixture]
     public class PlaywrightAdCollectorTests
     {
+        [Test]
+        public async Task TwoAttempts_PreserveFreshNavigationsBuffersAndBothLinkSamples_WithoutIntermediateReload()
+        {
+            _settings.CollectionAttempts = 2;
+            var page = new Mock<IPage>();
+            page.SetupGet(p => p.Frames).Returns(Array.Empty<IFrame>());
+            page.SetupSequence(p => p.EvaluateAsync<string[]>(It.Is<string>(s => s.Contains("__ad_links")), null))
+                .ReturnsAsync(new[] { "https://zicf.inven.co.kr/RealMedia/click_first" })
+                .ReturnsAsync(new[] { "https://zicf.inven.co.kr/RealMedia/click_second" });
+            var collector = new PlaywrightAdCollector(_settings, _loggerMock.Object, _progress);
+            var links = await collector.CollectLinksAsync(page.Object, "https://test.inven.co.kr/", CancellationToken.None);
+            Assert.That(links, Is.EquivalentTo(new[] { "https://zicf.inven.co.kr/RealMedia/click_first", "https://zicf.inven.co.kr/RealMedia/click_second" }));
+            page.Verify(p => p.GotoAsync("https://test.inven.co.kr/", It.IsAny<PageGotoOptions>()), Times.Exactly(2));
+            page.Verify(p => p.WaitForTimeoutAsync(_settings.PostMessageBufferMilliseconds), Times.Exactly(2));
+            page.Verify(p => p.ReloadAsync(It.IsAny<PageReloadOptions>()), Times.Never);
+        }
+
         private Mock<IAppLogger> _loggerMock = null!;
         private ProgressTracker _progress = null!;
         private AppSettings _settings = null!;
