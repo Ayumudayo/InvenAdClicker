@@ -30,14 +30,6 @@ jobs:
       - name: Build
         run: dotnet build InvenAdClicker.sln --configuration Release --no-restore
 
-      - name: Install Playwright Chromium (if needed)
-        shell: pwsh
-        run: |
-          $playwrightPs = "bin/Release/net8.0/playwright.ps1"
-          if (Test-Path $playwrightPs) {
-            pwsh $playwrightPs install chromium
-          }
-
       - name: Run Tests with Code Coverage
         shell: pwsh
         run: |
@@ -45,12 +37,31 @@ jobs:
             --no-build `
             --configuration Release `
             --verbosity normal `
+            --results-directory ./artifacts/test-results `
+            --logger "trx;LogFileName=tests.trx" `
             --collect:"XPlat Code Coverage"
 
+      - name: Summarize coverage
+        if: always()
+        shell: pwsh
+        run: ./scripts/summarize-coverage.ps1 -ResultsDirectory ./artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./artifacts/test-results
+
       - name: Publish (Release)
-        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish --no-build --no-restore
+        run: dotnet publish InvenAdClicker.csproj -c Release -r win-x64 -o ./publish
+
+      - name: Verify published app and install matching Chromium
+        shell: pwsh
+        run: ./scripts/verify-publish.ps1 -PublishDirectory ./publish -InstallChromium
 
       - uses: actions/upload-artifact@v4
         with:
           name: publish-output
           path: ./publish/**
+          include-hidden-files: true

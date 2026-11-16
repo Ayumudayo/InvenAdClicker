@@ -1,6 +1,8 @@
 using InvenAdClicker.Models;
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -14,12 +16,13 @@ namespace InvenAdClicker.Utils
     {
         private readonly AppSettings _settings;
         private readonly IAppLogger _logger;
-        private const string SettingsFileName = "appsettings.json";
+        private readonly string _settingsFilePath;
 
-        public SettingsManager(AppSettings settings, IAppLogger logger)
+        public SettingsManager(AppSettings settings, IAppLogger logger, string? settingsFilePath = null)
         {
             _settings = settings;
             _logger = logger;
+            _settingsFilePath = settingsFilePath ?? AppPaths.CreateDefault().SettingsFilePath;
         }
 
         public void ValidateAndUpdateSettings()
@@ -48,20 +51,17 @@ namespace InvenAdClicker.Utils
 
                 JsonObject root;
                 bool changed = false;
-                // 로컬 유틸: 파일 읽기/파싱 시도. 실패 시 백업하고 false 반환
+                // Read failures are fatal; only malformed JSON is backed up and repaired.
                 bool TryReadText(out string text)
                 {
                     try
                     {
-                        text = File.ReadAllText(SettingsFileName);
+                        text = File.ReadAllText(_settingsFilePath);
                         return true;
                     }
                     catch (Exception ex)
                     {
-                        _logger.Warn($"설정 파일을 읽지 못했습니다: {ex.Message}. 백업 후 기본으로 전환합니다.");
-                        TryBackup(SettingsFileName);
-                        text = string.Empty;
-                        return false;
+                        throw new IOException($"설정 파일 읽기 실패: '{_settingsFilePath}'. {ex.Message}", ex);
                     }
                 }
 
@@ -76,20 +76,20 @@ namespace InvenAdClicker.Utils
                             return true;
                         }
                         _logger.Warn("설정 파일의 루트가 객체가 아닙니다. 백업 후 기본으로 전환합니다.");
-                        TryBackup(SettingsFileName);
+                        TryBackup(_settingsFilePath);
                     }
                     catch (Exception ex)
                     {
                         _logger.Warn($"설정 파일 JSON 파싱 실패: {ex.Message}. 백업 후 기본으로 전환합니다.");
-                        TryBackup(SettingsFileName);
+                        TryBackup(_settingsFilePath);
                     }
                     parsedRoot = null!;
                     return false;
                 }
 
-                if (!File.Exists(SettingsFileName))
+                if (!File.Exists(_settingsFilePath))
                 {
-                    _logger.Info($"설정 파일이 없어 기본 구성을 메모리에서 생성합니다: '{SettingsFileName}'");
+                    _logger.Info($"설정 파일이 없어 기본 구성을 메모리에서 생성합니다: '{_settingsFilePath}'");
                     root = new JsonObject { ["AppSettings"] = BuildDefaultAppNode() };
                     changed = true;
                 }
@@ -103,7 +103,17 @@ namespace InvenAdClicker.Utils
                     changed = true;
                 }
 
-                var appSettingsNode = root["AppSettings"] as JsonObject;
+                // Configuration binding is case-insensitive, including the legacy *MilliSeconds keys.
+                // Canonicalize the section too so schema updates never discard lower-case user settings.
+                var sectionKey = root.ContainsKey("AppSettings") ? "AppSettings" : root
+                    .Select(entry => entry.Key).FirstOrDefault(key => string.Equals(key, "AppSettings", StringComparison.OrdinalIgnoreCase));
+                var appSettingsNode = sectionKey == null ? null : root[sectionKey] as JsonObject;
+                if (sectionKey != null && sectionKey != "AppSettings")
+                {
+                    root.Remove(sectionKey);
+                    root["AppSettings"] = appSettingsNode;
+                    changed = true;
+                }
                  
                 if (appSettingsNode is null)
                 {
@@ -129,13 +139,13 @@ namespace InvenAdClicker.Utils
 
                 if (changed)
                 {
-                    AtomicWrite(SettingsFileName, root.ToJsonString(jsonOptions));
+                    AtomicWrite(_settingsFilePath, root.ToJsonString(jsonOptions));
                     _logger.Info("appsettings.json 구성이 최신 스키마로 갱신되었습니다.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.Warn($"설정 파일을 자동으로 갱신하지 못했습니다: {ex.Message}");
+                throw new IOException($"설정 파일 갱신 실패: '{_settingsFilePath}'. {ex.Message}", ex);
             }
         }
 
@@ -167,20 +177,22 @@ namespace InvenAdClicker.Utils
             EnsureMinRuntime(nameof(_settings.MaxClickAttempts), 1,
                 () => _settings.MaxClickAttempts, v => _settings.MaxClickAttempts = v);
 
-            // 클릭 딜레이는 200ms 미만이면 예외 발생 (삼키지 않음)
-            if (_settings.ClickDelayMilliseconds < 200)
-            {
-                var msg = $"AppSettings.ClickDelayMilliseconds 값 {_settings.ClickDelayMilliseconds}ms는 허용된 최소 200ms보다 작습니다. 클릭 간 딜레이는 200ms 이상이어야 합니다.";
-                throw new InvalidOperationException(msg);
-            }
-
             if (_settings.MaxDegreeOfParallelism > 10)
             {
                 _logger.Warn($"AppSettings.MaxDegreeOfParallelism 값 {_settings.MaxDegreeOfParallelism}이 너무 커서 10으로 제한합니다.");
                 _settings.MaxDegreeOfParallelism = 10;
             }
 
-            if ((_settings.TargetUrls == null) || _settings.TargetUrls.Length == 0)
+            // Validate annotations after the established runtime corrections. Click delay and
+            // missing required objects are fatal, while numeric correction remains compatible.
+            _settings.TargetUrls ??= Array.Empty<string>();
+            var validationResults = new List<ValidationResult>();
+            if (!Validator.TryValidateObject(_settings, new ValidationContext(_settings), validationResults, validateAllProperties: true))
+            {
+                throw new SettingsValidationException(string.Join(Environment.NewLine, validationResults.Select(result => result.ErrorMessage)));
+            }
+
+            if (_settings.TargetUrls.Length == 0)
             {
                 _logger.Warn("AppSettings.TargetUrls가 비어 있습니다. 수행할 작업이 없습니다.");
             }
@@ -197,7 +209,8 @@ namespace InvenAdClicker.Utils
                         continue;
                     }
 
-                    if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+                    if (Uri.TryCreate(trimmed, UriKind.Absolute, out var parsedUrl)
+                        && (parsedUrl.Scheme == Uri.UriSchemeHttps || parsedUrl.Scheme == Uri.UriSchemeHttp))
                     {
                         if (seen.Add(trimmed))
                         {
@@ -315,31 +328,11 @@ namespace InvenAdClicker.Utils
 
         private static void TryBackup(string path)
         {
-            try
-            {
-                if (!File.Exists(path)) return;
-                var backup = path + ".bak." + DateTime.Now.ToString("yyyyMMddHHmmss");
-                File.Move(path, backup);
-            }
-            catch { }
+            if (!File.Exists(path)) return;
+            File.Copy(path, path + ".bak." + DateTime.Now.ToString("yyyyMMddHHmmss") + "." + Guid.NewGuid().ToString("N"));
         }
 
-        // 설정 파일 원자적 기록: 같은 디렉토리에 임시 파일을 쓰고 Move로 교체
-        private static void AtomicWrite(string path, string content)
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(path);
-                if (string.IsNullOrEmpty(dir)) dir = ".";
-                Directory.CreateDirectory(dir);
-                var temp = Path.Combine(dir, Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N") + ".tmp");
-                File.WriteAllText(temp, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                File.Move(temp, path, overwrite: true);
-            }
-            catch
-            {
-                try { File.WriteAllText(path, content); } catch { }
-            }
-        }
+        private static void AtomicWrite(string path, string content) =>
+            AtomicFile.Write(path, new UTF8Encoding(false).GetBytes(content), overwrite: true);
     }
 }

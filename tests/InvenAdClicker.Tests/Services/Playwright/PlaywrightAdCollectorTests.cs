@@ -129,5 +129,46 @@ namespace InvenAdClicker.Tests.Services.Playwright
             Assert.ThrowsAsync<OperationCanceledException>(async () =>
                 await collector.CollectLinksAsync(pageMock.Object, "https://test.inven.co.kr/", cts.Token));
         }
+
+        [Test]
+        public async Task CollectLinksAsync_ResolvesFrameRelativeLinksAndRejectsEmbeddedAllowedUrls()
+        {
+            var page = new Mock<IPage>();
+            var parent = new Mock<IFrame>();
+            var frame = new Mock<IFrame>();
+            frame.SetupGet(f => f.ParentFrame).Returns(parent.Object);
+            frame.SetupGet(f => f.Url).Returns("https://zicf.inven.co.kr/RealMedia/ads/frame.html");
+            frame.Setup(f => f.EvaluateAsync<string[]>(It.IsAny<string>(), null)).ReturnsAsync(new[]
+            {
+                "click_lx.ads/relative", "../click_parent", "/RealMedia/click_root",
+                "//zicf.inven.co.kr/RealMedia/click_scheme", " https://zicf.inven.co.kr/RealMedia/click_root ",
+                "#", "javascript:alert(1)", "/other/click", "https://zicf.inven.co.kr/RealMediaEvil/click",
+                "https://evil.example/?url=https://zicf.inven.co.kr/RealMedia/click_fake",
+                "https://zicf.inven.co.kr:444/RealMedia/click_fake",
+                "https://user@zicf.inven.co.kr/RealMedia/click_fake"
+            });
+            page.SetupGet(p => p.Frames).Returns(new[] { parent.Object, frame.Object });
+            var collector = new PlaywrightAdCollector(_settings, _loggerMock.Object, _progress);
+            var links = await collector.CollectLinksAsync(page.Object, "https://test.inven.co.kr/", CancellationToken.None);
+            Assert.That(links, Is.EquivalentTo(new[]
+            {
+                "https://zicf.inven.co.kr/RealMedia/ads/click_lx.ads/relative",
+                "https://zicf.inven.co.kr/RealMedia/click_parent",
+                "https://zicf.inven.co.kr/RealMedia/click_root",
+                "https://zicf.inven.co.kr/RealMedia/click_scheme"
+            }));
+        }
+
+        [Test]
+        public async Task CollectLinksAsync_WhenHookHasRelativeLinks_UsesPageOriginAndDeduplicates()
+        {
+            var page = new Mock<IPage>();
+            page.SetupGet(p => p.Frames).Returns(Array.Empty<IFrame>());
+            page.Setup(p => p.EvaluateAsync<string[]>(It.Is<string>(script => script.Contains("__ad_links")), null))
+                .ReturnsAsync(new[] { "/RealMedia/click_relative", "//zicf.inven.co.kr/RealMedia/click_absolute", "https://zicf.inven.co.kr/RealMedia/click_absolute" });
+            var collector = new PlaywrightAdCollector(_settings, _loggerMock.Object, _progress);
+            var links = await collector.CollectLinksAsync(page.Object, "https://test.inven.co.kr/", CancellationToken.None);
+            Assert.That(links, Is.EqualTo(new[] { "https://zicf.inven.co.kr/RealMedia/click_absolute" }));
+        }
     }
 }

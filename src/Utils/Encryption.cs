@@ -10,9 +10,9 @@ namespace InvenAdClicker.Utils
     {
         private readonly string _credentialFile;
 
-        public Encryption(string credentialFile = "credentials.dat")
+        public Encryption(string? credentialFile = null)
         {
-            _credentialFile = credentialFile;
+            _credentialFile = Path.GetFullPath(credentialFile ?? AppPaths.CreateDefault().CredentialFilePath);
         }
 
         // 저장된 자격증명을 로드
@@ -86,7 +86,7 @@ namespace InvenAdClicker.Utils
                     Array.Clear(decrypted, 0, decrypted.Length);
                 }
             }
-            catch
+            catch (CryptographicException)
             {
                 // 복호화 실패 or 파일 포맷 오류
                 return false;
@@ -104,7 +104,7 @@ namespace InvenAdClicker.Utils
                 byte[] encrypted = ProtectedData.Protect(
                     plain, null, DataProtectionScope.CurrentUser);
 
-                File.WriteAllBytes(_credentialFile, encrypted);
+                AtomicFile.Write(_credentialFile, encrypted, overwrite: true);
             }
             finally
             {
@@ -114,24 +114,27 @@ namespace InvenAdClicker.Utils
 
         // 콘솔에서 비밀번호 입력 시 마스킹 처리
         private static string ReadPasswordMasked()
+            => ReadPasswordMasked(() => Console.ReadKey(intercept: true), Console.Write);
+
+        internal static string ReadPasswordMasked(Func<ConsoleKeyInfo> readKey, Action<string> write)
         {
             var sb = new StringBuilder();
             while (true)
             {
-                var key = Console.ReadKey(intercept: true);
+                var key = readKey();
                 if (key.Key == ConsoleKey.Enter) break;
                 if (key.Key == ConsoleKey.Backspace && sb.Length > 0)
                 {
                     sb.Length--;
-                    Console.Write("\b \b");
+                    write("\b \b");
                 }
                 else if (!char.IsControl(key.KeyChar))
                 {
                     sb.Append(key.KeyChar);
-                    Console.Write('*');
+                    write("*");
                 }
             }
-            Console.WriteLine();
+            write(Environment.NewLine);
             return sb.ToString();
         }
     }

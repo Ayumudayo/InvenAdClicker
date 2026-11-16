@@ -396,5 +396,8 @@ MigrationBackup/
 # JetBrains Rider
 *.sln.iml
 
-# Documentation (untracked)
-docs/
+# Keep the repository-root docs directory and all descendants untracked.
+/docs/
+
+# Local Playwright publish/debug scratch output.
+/test_pw/

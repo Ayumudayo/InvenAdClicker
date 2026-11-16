@@ -104,9 +104,8 @@ namespace InvenAdClicker.Services.Playwright
 
                         foreach (var href in hrefs)
                         {
-                            var normalized = href;
-                            if (normalized.StartsWith("//")) normalized = "https:" + normalized;
-                            if (IsAllowed(normalized))
+                            var normalized = NormalizeAllowedLink(href, frameUrl);
+                            if (normalized != null)
                                 allLinks.Add(normalized);
                         }
                     }
@@ -134,11 +133,8 @@ namespace InvenAdClicker.Services.Playwright
                     _logger.Info($"[수집기] postMessage/래핑 수집 링크 수: {extras?.Length ?? 0}");
                     foreach (var extra in extras ?? Array.Empty<string>())
                     {
-                        if (!string.IsNullOrWhiteSpace(extra))
-                        {
-                            var href = extra.StartsWith("//") ? ("https:" + extra) : extra;
-                            if (IsAllowed(href)) allLinks.Add(href);
-                        }
+                        var normalized = NormalizeAllowedLink(extra, url);
+                        if (normalized != null) allLinks.Add(normalized);
                     }
                     _logger.Info($"[수집기] 누적 링크 수(필터 전): {allLinks.Count}");
                     extrasMs = sw.ElapsedMilliseconds;
@@ -181,6 +177,28 @@ namespace InvenAdClicker.Services.Playwright
 
             _logger.Info($"[perf][collect] url='{url}' done attempts={_settings.CollectionAttempts} total={swTotal.ElapsedMilliseconds}ms links={result.Count}/{allLinks.Count}");
             return result;
+        }
+
+        private static string? NormalizeAllowedLink(string? href, string baseUrl)
+        {
+            var value = href?.Trim();
+            if (string.IsNullOrEmpty(value) || value.StartsWith("#", StringComparison.Ordinal)
+                || !Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
+                || !Uri.TryCreate(baseUri, value, out var link))
+            {
+                return null;
+            }
+
+            var allowed = new Uri(Constants.ActualAdLinkPrefix);
+            if (link.Scheme != allowed.Scheme || !string.Equals(link.Host, allowed.Host, StringComparison.OrdinalIgnoreCase)
+                || link.Port != allowed.Port || !string.IsNullOrEmpty(link.UserInfo)
+                || !(string.Equals(link.AbsolutePath, allowed.AbsolutePath, StringComparison.OrdinalIgnoreCase)
+                    || link.AbsolutePath.StartsWith(allowed.AbsolutePath + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+
+            return link.AbsoluteUri;
         }
     }
 }
