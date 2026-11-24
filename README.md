@@ -50,6 +50,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\playwright.ps1 install chr
 
 프로그램 시작 시 `%LOCALAPPDATA%\InvenAdClicker\appsettings.json`의 `AppSettings` 스키마를 자동으로 동기화합니다. 배포 폴더의 `appsettings.json`은 초기 설정 템플릿입니다.
 
+별도 데이터 폴더를 사용하려면 `InvenAdClicker.exe --data-directory "E:\InvenData"`로 실행합니다. 해당 폴더에 설정·자격 증명·로그를 저장합니다.
+
 - 새 설정이 추가되면: 기존 값은 유지한 채 누락된 필드를 기본값으로 추가
 - 설정이 제거되면: 더 이상 사용되지 않는 필드를 제거
 - 중첩 설정(`Debug`)도 동일하게 동기화

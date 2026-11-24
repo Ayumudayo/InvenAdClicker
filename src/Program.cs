@@ -33,9 +33,13 @@ namespace InvenAdClicker
             string? smokeDirectory = null;
             try
             {
+                int directoryOption = Array.FindIndex(args, arg => string.Equals(arg, "--data-directory", StringComparison.OrdinalIgnoreCase));
+                if (directoryOption >= 0 && (directoryOption + 1 >= args.Length
+                    || string.IsNullOrWhiteSpace(args[directoryOption + 1]) || args[directoryOption + 1].StartsWith("--", StringComparison.Ordinal)))
+                    throw new ArgumentException("--data-directory 뒤에 데이터 폴더 경로를 지정하세요.");
                 var paths = smokeTest
                     ? AppPaths.CreateIsolated(AppContext.BaseDirectory, smokeDirectory = Path.Combine(Path.GetTempPath(), "inven-smoke-" + Guid.NewGuid().ToString("N")))
-                    : AppPaths.CreateDefault();
+                    : directoryOption >= 0 ? new AppPaths(AppContext.BaseDirectory, args[directoryOption + 1]) : AppPaths.CreateDefault();
                 var settingsPath = smokeTest ? paths.SettingsTemplatePath : paths.SettingsFilePath;
                 if (!smokeTest)
                 {
