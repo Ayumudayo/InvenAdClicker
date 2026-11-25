@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "https://www.inven.co.kr/",
+    "https://it.inven.co.kr/",
+    "https://m.inven.co.kr/"
+  ],
+  "passes": 2,
+  "concurrency": 3,
+  "click_concurrency": 3,
+  "click_delay_ms": 300,
+  "click_jitter_ms": 600,
+  "page_delay_ms": 300,
+  "page_jitter_ms": 500,
+  "settle_delay_ms": 4000,
+  "log_dir": "logs",
+  "log_retention_days": 30
+}

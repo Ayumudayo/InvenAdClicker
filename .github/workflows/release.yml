@@ -21,18 +21,13 @@ jobs:
           fetch-depth: 1
           fetch-tags: false
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: 8.0.x
+          components: clippy
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Extract version from tag
         id: version
@@ -43,18 +38,22 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Publish
-        run: dotnet publish InvenAdClicker.csproj -c Release -r win-x64 -o ./publish /p:Version=${{ env.VERSION }}
+      - name: Clippy & Test
+        run: |
+          cargo clippy --all-targets --locked -- -W clippy::all
+          cargo test --release --locked
 
-      - name: Verify published app and install matching Chromium
-        shell: pwsh
-        run: ./scripts/verify-publish.ps1 -PublishDirectory ./publish -InstallChromium
+      - name: Build (Release)
+        run: cargo build --release --locked
 
-      - name: Copy README and LICENSE into publish folder
+      - name: Stage Release Files
         shell: pwsh
         run: |
-          Copy-Item README.md .\publish\README.md
-          Copy-Item LICENSE .\publish\LICENSE
+          New-Item -ItemType Directory -Path ./publish -Force | Out-Null
+          Copy-Item .\target\release\InvenAdClicker.exe .\publish\InvenAdClicker.exe
+          Copy-Item .\config.json.example .\publish\config.json.example
+          Copy-Item .\README.md .\publish\README.md
+          Copy-Item .\LICENSE .\publish\LICENSE
 
       - name: Zip Release
         shell: pwsh
