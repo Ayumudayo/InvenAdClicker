@@ -11,57 +11,31 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: 8.0.x
+          components: clippy
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
-      - name: Restore dependencies
-        run: dotnet restore InvenAdClicker.sln
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -W clippy::all
 
-      - name: Build
-        run: dotnet build InvenAdClicker.sln --configuration Release --no-restore
+      - name: Run Tests
+        run: cargo test --release --locked
 
-      - name: Run Tests with Code Coverage
+      - name: Build (Release)
+        run: cargo build --release --locked
+
+      - name: Stage build output
         shell: pwsh
         run: |
-          dotnet test tests/InvenAdClicker.Tests/InvenAdClicker.Tests.csproj `
-            --no-build `
-            --configuration Release `
-            --verbosity normal `
-            --results-directory ./artifacts/test-results `
-            --logger "trx;LogFileName=tests.trx" `
-            --collect:"XPlat Code Coverage"
-
-      - name: Summarize coverage
-        if: always()
-        shell: pwsh
-        run: ./scripts/summarize-coverage.ps1 -ResultsDirectory ./artifacts/test-results
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: ./artifacts/test-results
-
-      - name: Publish (Release)
-        run: dotnet publish InvenAdClicker.csproj -c Release -r win-x64 -o ./publish
-
-      - name: Verify published app and install matching Chromium
-        shell: pwsh
-        run: ./scripts/verify-publish.ps1 -PublishDirectory ./publish -InstallChromium
+          New-Item -ItemType Directory -Path ./publish -Force | Out-Null
+          Copy-Item .\target\release\InvenAdClicker.exe .\publish\InvenAdClicker.exe
+          Copy-Item .\config.json.example .\publish\config.json.example
 
       - uses: actions/upload-artifact@v4
         with:
-          name: publish-output
+          name: build-output
           path: ./publish/**
-          include-hidden-files: true
