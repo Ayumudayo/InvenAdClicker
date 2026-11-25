@@ -2,22 +2,38 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  release:
-    if: github.event.deleted == false
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  package:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: windows-latest
-    concurrency:
-      group: release-${{ github.ref }}
-      cancel-in-progress: true
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 1
           fetch-tags: false
 
@@ -28,15 +44,6 @@ jobs:
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
-
-      - name: Extract version from tag
-        id: version
-        shell: bash
-        run: |
-          TAG="$GITHUB_REF_NAME"
-          VERSION="${TAG#v}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Clippy & Test
         run: |
@@ -70,13 +77,12 @@ jobs:
           "$hash  InvenAdClicker-${{ env.VERSION }}.zip" | Out-File -Encoding utf8 .\artifacts\checksums.txt
           Write-Host "SHA256: $hash"
 
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          artifacts: |
-            ./artifacts/InvenAdClicker-${{ env.VERSION }}.zip
-            ./artifacts/checksums.txt
-          generateReleaseNotes: true
+      - name: Upload Release Assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" `
+            "./artifacts/InvenAdClicker-${{ env.VERSION }}.zip" `
+            "./artifacts/checksums.txt" `
+            --clobber
