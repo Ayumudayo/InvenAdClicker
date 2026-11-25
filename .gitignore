@@ -11,10 +11,3 @@ credentials.dat
 /artifacts/
 /publish/
 *.zip
-
-# Legacy & local IDE/test directories
-/bin/
-/obj/
-/docs/
-/test_pw/
-/.vs/
