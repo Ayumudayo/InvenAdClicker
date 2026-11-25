@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to rebuild and upload assets (e.g., v6.1.0)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -12,6 +18,7 @@ permissions:
 
 jobs:
   release-please:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.tag == '' }}
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -26,16 +33,22 @@ jobs:
 
   package:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.tag != '') || (needs.release-please.result == 'success' && needs.release-please.outputs.release_created == 'true')) }}
     runs-on: windows-latest
     env:
-      VERSION: ${{ needs.release-please.outputs.version }}
+      TAG_NAME: ${{ (github.event_name == 'workflow_dispatch' && inputs.tag != '') && inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ env.TAG_NAME }}
           fetch-depth: 1
           fetch-tags: false
+
+      - name: Resolve Version
+        shell: pwsh
+        run: |
+          $version = $env:TAG_NAME -replace '^v', ''
+          "VERSION=$version" | Add-Content -Path $env:GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -82,7 +95,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" `
+          gh release upload "$env:TAG_NAME" `
             "./artifacts/InvenAdClicker-${{ env.VERSION }}.zip" `
             "./artifacts/checksums.txt" `
             --clobber
