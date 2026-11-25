@@ -2,6 +2,7 @@ using Microsoft.Playwright;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace InvenAdClicker.Utils
@@ -9,8 +10,17 @@ namespace InvenAdClicker.Utils
     public static class PlaywrightBootstrap
     {
         // 브라우저 미설치 시 playwright.ps1을 실행하고 true 반환. 이미 설치되어 있으면 false 반환.
-        public static async Task<bool> EnsureInstalledIfMissingAsync(IAppLogger logger)
+        public static async Task<bool> EnsureInstalledIfMissingAsync(IAppLogger logger, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                PlaywrightDeployment.VerifyAssets(AppContext.BaseDirectory);
+            }
+            catch (FileNotFoundException ex)
+            {
+                throw new ApplicationException($"Playwright 배포 파일이 누락되었습니다. 배포 폴더 전체를 다시 복사해 주세요: {ex.FileName}", ex);
+            }
             try
             {
                 using var playwright = await Playwright.CreateAsync();
@@ -38,13 +48,17 @@ namespace InvenAdClicker.Utils
                 }
 
                 logger.Warn("Playwright가 설치되어 있지 않습니다. 자동으로 설치를 진행합니다.");
-                var ok = RunPowershell(scriptPath, "install chromium", out var so, out var se);
-                if (!ok)
+                var (exitCode, so, se) = await RunPowershellAsync(scriptPath, "install chromium", cancellationToken);
+                if (exitCode != 0)
                 {
-                    logger.Error("Playwright 자동 설치에 실패했습니다. 수동으로 설치 스크립트를 실행해 주세요.");
-                    logger.Debug($"stdout: {so}");
-                    logger.Debug($"stderr: {se}");
-                    throw new ApplicationException("Playwright 자동 설치 실패");
+                    logger.Error($"Playwright 자동 설치에 실패했습니다. PowerShell 종료 코드: {exitCode}");
+                    if (!string.IsNullOrWhiteSpace(so)) logger.Error($"Playwright 설치 stdout: {so.Trim()}");
+                    if (!string.IsNullOrWhiteSpace(se)) logger.Error($"Playwright 설치 stderr: {se.Trim()}");
+
+                    var details = !string.IsNullOrWhiteSpace(se) ? se.Trim() : so.Trim();
+                    throw new ApplicationException(string.IsNullOrWhiteSpace(details)
+                        ? $"Playwright 자동 설치 실패 (PowerShell 종료 코드: {exitCode})"
+                        : $"Playwright 자동 설치 실패: {details}");
                 }
 
                 logger.Info("Playwright 브라우저 설치가 완료되었습니다.");
@@ -52,30 +66,41 @@ namespace InvenAdClicker.Utils
             }
         }
 
-        private static bool RunPowershell(string scriptPath, string args, out string stdout, out string stderr)
+        private static async Task<(int ExitCode, string Stdout, string Stderr)> RunPowershellAsync(
+            string scriptPath, string args, CancellationToken cancellationToken)
         {
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell",
-                Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\" {args}",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\" {args}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
+                WorkingDirectory = AppContext.BaseDirectory,
             };
             try
             {
                 using var p = Process.Start(psi)!;
-                stdout = p.StandardOutput.ReadToEnd();
-                stderr = p.StandardError.ReadToEnd();
-                p.WaitForExit();
-                return p.ExitCode == 0;
+                var stdoutTask = p.StandardOutput.ReadToEndAsync();
+                var stderrTask = p.StandardError.ReadToEndAsync();
+                try
+                {
+                    await p.WaitForExitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (!p.HasExited) p.Kill(entireProcessTree: true);
+                    await p.WaitForExitAsync();
+                    await Task.WhenAll(stdoutTask, stderrTask);
+                    throw;
+                }
+                return (p.ExitCode, await stdoutTask, await stderrTask);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                stdout = string.Empty;
-                stderr = ex.Message;
-                return false;
+                return (-1, string.Empty, ex.Message);
             }
         }
     }

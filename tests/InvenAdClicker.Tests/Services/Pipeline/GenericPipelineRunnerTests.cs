@@ -112,7 +112,9 @@ namespace InvenAdClicker.Tests.Services.Pipeline
                 Task completed = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(1)));
                 Assert.That(completed, Is.SameAs(runTask),
                     "Collector fault must complete the click queue so peer collectors do not wait forever.");
-                Assert.ThrowsAsync<InvalidOperationException>(async () => await runTask);
+                var result = await runTask;
+                Assert.That(result.Status, Is.EqualTo(PipelineRunStatus.FatalFailure));
+                Assert.That(result.PrimaryException, Is.TypeOf<InvalidOperationException>());
             }
             finally
             {
@@ -156,7 +158,12 @@ namespace InvenAdClicker.Tests.Services.Pipeline
                     clickStarted.TrySetResult();
                     await releaseClicker.Task;
                     return page;
-                }));
+                }), new PipelineShutdownOptions
+                {
+                    CooperativeTimeout = TimeSpan.FromMilliseconds(30),
+                    AbortTimeout = TimeSpan.FromMilliseconds(30),
+                    FinalObservationTimeout = TimeSpan.FromMilliseconds(30)
+                });
 
             var runTask = runner.RunAsync(new[] { clickUrl, faultUrl }, CancellationToken.None);
 
@@ -165,7 +172,9 @@ namespace InvenAdClicker.Tests.Services.Pipeline
                 Task completed = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(2)));
                 Assert.That(completed, Is.SameAs(runTask),
                     "A worker fault must not wait forever for a peer stuck in in-flight browser work.");
-                Assert.ThrowsAsync<InvalidOperationException>(async () => await runTask);
+                var result = await runTask;
+                Assert.That(result.Status, Is.EqualTo(PipelineRunStatus.FatalFailure));
+                Assert.That(result.PrimaryException, Is.TypeOf<InvalidOperationException>());
             }
             finally
             {

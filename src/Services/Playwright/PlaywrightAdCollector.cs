@@ -48,10 +48,11 @@ namespace InvenAdClicker.Services.Playwright
                 long bufferMs = 0;
                 long extractMs = 0;
                 long extrasMs = 0;
-                long reloadMs = 0;
                 bool iframeTimedOut = false;
 
                 var sw = Stopwatch.StartNew();
+                // Every attempt starts with a fresh navigation. An extra reload
+                // between attempts would be discarded by the next GotoAsync.
                 await page.GotoAsync(url, new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
@@ -65,7 +66,7 @@ namespace InvenAdClicker.Services.Playwright
                     sw.Restart();
                     await page.WaitForSelectorAsync("iframe", new PageWaitForSelectorOptions
                     {
-                        Timeout = _settings.IframeTimeoutMilliSeconds,
+                        Timeout = _settings.IframeTimeoutMilliseconds,
                         State = WaitForSelectorState.Attached
                     });
                     iframeWaitMs = sw.ElapsedMilliseconds;
@@ -79,7 +80,7 @@ namespace InvenAdClicker.Services.Playwright
                 {
                     iframeTimedOut = true;
                     iframeWaitMs = sw.ElapsedMilliseconds;
-                    _logger.Debug($"{url}에서 {_settings.IframeTimeoutMilliSeconds}ms 내에 iframe 미검출");
+                    _logger.Debug($"{url}에서 {_settings.IframeTimeoutMilliseconds}ms 내에 iframe 미검출");
                 }
 
                 // Optimization: Collect all links from all frames in parallel using JS evaluation where possible
@@ -104,9 +105,8 @@ namespace InvenAdClicker.Services.Playwright
 
                         foreach (var href in hrefs)
                         {
-                            var normalized = href;
-                            if (normalized.StartsWith("//")) normalized = "https:" + normalized;
-                            if (IsAllowed(normalized))
+                            var normalized = NormalizeAllowedLink(href, frameUrl);
+                            if (normalized != null)
                                 allLinks.Add(normalized);
                         }
                     }
@@ -134,11 +134,8 @@ namespace InvenAdClicker.Services.Playwright
                     _logger.Info($"[수집기] postMessage/래핑 수집 링크 수: {extras?.Length ?? 0}");
                     foreach (var extra in extras ?? Array.Empty<string>())
                     {
-                        if (!string.IsNullOrWhiteSpace(extra))
-                        {
-                            var href = extra.StartsWith("//") ? ("https:" + extra) : extra;
-                            if (IsAllowed(href)) allLinks.Add(href);
-                        }
+                        var normalized = NormalizeAllowedLink(extra, url);
+                        if (normalized != null) allLinks.Add(normalized);
                     }
                     _logger.Info($"[수집기] 누적 링크 수(필터 전): {allLinks.Count}");
                     extrasMs = sw.ElapsedMilliseconds;
@@ -148,24 +145,13 @@ namespace InvenAdClicker.Services.Playwright
                     _logger.Debug($"postMessage 수집 링크 병합 실패: {ex.Message}");
                 }
 
-                if (i < _settings.CollectionAttempts - 1)
-                {
-                    sw.Restart();
-                    await page.ReloadAsync(new PageReloadOptions
-                    {
-                        WaitUntil = WaitUntilState.DOMContentLoaded,
-                        Timeout = _settings.PageLoadTimeoutMilliseconds
-                    });
-                    reloadMs = sw.ElapsedMilliseconds;
-                }
-
                 swAttempt.Stop();
                 var routeStats = PlaywrightPageTelemetry.SnapshotRouteStats(page);
                 var added = Math.Max(0, allLinks.Count - attemptStartLinks);
                 _logger.Info(
                     $"[perf][collect] url='{url}' attempt={i + 1}/{_settings.CollectionAttempts} " +
                     $"goto={gotoMs}ms iframeWait={iframeWaitMs}ms{(iframeTimedOut ? "(timeout)" : string.Empty)} " +
-                    $"buffer={bufferMs}ms extract={extractMs}ms extras={extrasMs}ms reload={reloadMs}ms " +
+                    $"buffer={bufferMs}ms extract={extractMs}ms extras={extrasMs}ms " +
                     $"links+={added} linksTotal={allLinks.Count} route={routeStats.FormatCompact()} total={swAttempt.ElapsedMilliseconds}ms");
             }
 
@@ -181,6 +167,28 @@ namespace InvenAdClicker.Services.Playwright
 
             _logger.Info($"[perf][collect] url='{url}' done attempts={_settings.CollectionAttempts} total={swTotal.ElapsedMilliseconds}ms links={result.Count}/{allLinks.Count}");
             return result;
+        }
+
+        private static string? NormalizeAllowedLink(string? href, string baseUrl)
+        {
+            var value = href?.Trim();
+            if (string.IsNullOrEmpty(value) || value.StartsWith("#", StringComparison.Ordinal)
+                || !Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
+                || !Uri.TryCreate(baseUri, value, out var link))
+            {
+                return null;
+            }
+
+            var allowed = new Uri(Constants.ActualAdLinkPrefix);
+            if (link.Scheme != allowed.Scheme || !string.Equals(link.Host, allowed.Host, StringComparison.OrdinalIgnoreCase)
+                || link.Port != allowed.Port || !string.IsNullOrEmpty(link.UserInfo)
+                || !(string.Equals(link.AbsolutePath, allowed.AbsolutePath, StringComparison.OrdinalIgnoreCase)
+                    || link.AbsolutePath.StartsWith(allowed.AbsolutePath + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+
+            return link.AbsoluteUri;
         }
     }
 }

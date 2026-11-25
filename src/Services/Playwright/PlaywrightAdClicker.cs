@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using InvenAdClicker.Services.Interfaces;
+using InvenAdClicker.Utils;
 
 namespace InvenAdClicker.Services.Playwright
 {
@@ -30,50 +31,64 @@ namespace InvenAdClicker.Services.Playwright
                 return page;
             }
 
-            for (int i = 0; i < _settings.MaxClickAttempts; i++)
+            if (_settings.MaxClickAttempts <= 0)
             {
-                try
-                {
-                    PlaywrightPageTelemetry.ResetRouteStats(page);
-                    var swTotal = Stopwatch.StartNew();
-                    var sw = Stopwatch.StartNew();
-                    await page.GotoAsync(link, new PageGotoOptions
-                    {
-                        WaitUntil = WaitUntilState.Commit, // Commit으로 변경: 페이지 로딩 완료 대기 안 함
-                        Timeout = _settings.PageLoadTimeoutMilliseconds
-                    });
-                    var gotoMs = sw.ElapsedMilliseconds;
+                throw new ArgumentException("MaxClickAttempts는 1 이상이어야 합니다.");
+            }
 
-                    sw.Restart();
-                    await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
-                    var delayMs = sw.ElapsedMilliseconds;
-                    swTotal.Stop();
-
-                    var routeStats = PlaywrightPageTelemetry.SnapshotRouteStats(page);
-                    _logger.Info(
-                        $"[perf][click] clicker={clickerId} link='{link}' attempt={i + 1}/{_settings.MaxClickAttempts} " +
-                        $"goto={gotoMs}ms delay={delayMs}ms route={routeStats.FormatCompact()} total={swTotal.ElapsedMilliseconds}ms");
-                    return page; // 성공
-                }
-                catch (OperationCanceledException)
+            var originalPage = page;
+            try
+            {
+                return await AsyncRetry.ExecuteAsync(async attempt =>
                 {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger.Warn($"Playwright 클릭 {i + 1}회차 실패('{link}'): {ex.Message}");
-                    if (i < _settings.MaxClickAttempts - 1)
+                    try
                     {
-                        page = await _browserPool.RenewAsync(page, cancellationToken);
+                        PlaywrightPageTelemetry.ResetRouteStats(page);
+                        var swTotal = Stopwatch.StartNew();
+                        var sw = Stopwatch.StartNew();
+                        await page.GotoAsync(link, new PageGotoOptions
+                        {
+                            WaitUntil = WaitUntilState.Commit, // Commit으로 변경: 페이지 로딩 완료 대기 안 함
+                            Timeout = _settings.PageLoadTimeoutMilliseconds
+                        });
+                        var gotoMs = sw.ElapsedMilliseconds;
+
+                        sw.Restart();
+                        await Task.Delay(_settings.ClickDelayMilliseconds, cancellationToken);
+                        var delayMs = sw.ElapsedMilliseconds;
+                        swTotal.Stop();
+
+                        var routeStats = PlaywrightPageTelemetry.SnapshotRouteStats(page);
+                        _logger.Info(
+                            $"[perf][click] clicker={clickerId} link='{link}' attempt={attempt}/{_settings.MaxClickAttempts} " +
+                            $"goto={gotoMs}ms delay={delayMs}ms route={routeStats.FormatCompact()} total={swTotal.ElapsedMilliseconds}ms");
+                        return page; // 성공
                     }
-                    else
+                    catch (OperationCanceledException)
                     {
-                        _logger.Error($"Playwright 최종 클릭 시도 실패('{link}')");
                         throw;
                     }
-                }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"Playwright 클릭 {attempt}회차 실패('{link}'): {ex.Message}");
+                        if (attempt == _settings.MaxClickAttempts)
+                        {
+                            _logger.Error($"Playwright 최종 클릭 시도 실패('{link}')");
+                        }
+                        throw;
+                    }
+                }, _settings.MaxClickAttempts, TimeSpan.FromMilliseconds(250), _ => true, cancellationToken,
+                    beforeRetry: async (_, _) => page = await _browserPool.RenewAsync(page, cancellationToken));
             }
-            return page; // 여까지 오면 큰일남
+            catch
+            {
+                // On failure the caller still holds originalPage, so it cannot release a replacement.
+                if (!ReferenceEquals(page, originalPage))
+                {
+                    try { await page.Context.CloseAsync(); } catch { }
+                }
+                throw;
+            }
         }
     }
 }

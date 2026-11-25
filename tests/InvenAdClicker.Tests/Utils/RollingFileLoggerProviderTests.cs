@@ -12,6 +12,26 @@ namespace InvenAdClicker.Tests.Utils
     [TestFixture]
     public class RollingFileLoggerProviderTests
     {
+        private string _logRoot = null!;
+        [SetUp] public void Setup() => _logRoot = Path.Combine(Path.GetTempPath(), "inven-logger-" + Guid.NewGuid().ToString("N"));
+        [TearDown] public void Cleanup() { if (Directory.Exists(_logRoot)) Directory.Delete(_logRoot, true); }
+
+        [Test]
+        [NonParallelizable]
+        public void FileWriteFailure_ReportsTheSelectedPathAndReason()
+        {
+            var previousError = Console.Error;
+            using var error = new StringWriter();
+            Console.SetError(error);
+            try
+            {
+                using (var provider = new RollingFileLoggerProvider(10,
+                    (_, _, _, _) => Task.FromException(new IOException("test disk failure")), logDirectory: _logRoot))
+                    provider.CreateLogger("test").LogInformation("message");
+                Assert.That(error.ToString(), Does.Contain(_logRoot).And.Contain("test disk failure"));
+            }
+            finally { Console.SetError(previousError); }
+        }
         [Test]
         public void Dispose_WritesOneTimestampedRunLogAndMatchingFatalLog()
         {
@@ -22,7 +42,7 @@ namespace InvenAdClicker.Tests.Utils
 
             try
             {
-                using (var provider = new RollingFileLoggerProvider())
+                using (var provider = new RollingFileLoggerProvider(new AppPaths(tempDirectory, tempDirectory)))
                 {
                     var logger = provider.CreateLogger("test");
                     logger.LogInformation("regular message");
@@ -62,7 +82,7 @@ namespace InvenAdClicker.Tests.Utils
             int appends = 0;
             var releaseAppender = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var provider = new RollingFileLoggerProvider(
-                capacity: 1,
+                capacity: 1, logDirectory: _logRoot,
                 fileAppender: (_, _, _, _) =>
                 {
                     Interlocked.Increment(ref appends);
@@ -97,7 +117,7 @@ namespace InvenAdClicker.Tests.Utils
             var appenderStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var releaseAppender = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var provider = new RollingFileLoggerProvider(
-                capacity: 10,
+                capacity: 10, logDirectory: _logRoot,
                 fileAppender: (_, _, _, _) =>
                 {
                     appenderStarted.TrySetResult();

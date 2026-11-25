@@ -30,20 +30,38 @@ jobs:
       - name: Build
         run: dotnet build InvenAdClicker.sln --configuration Release --no-restore
 
-      - name: Test (skip if no test projects)
+      - name: Run Tests with Code Coverage
         shell: pwsh
         run: |
-          $testProjects = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { (Select-String -Path $_.FullName -Pattern '<PackageReference Include="(xunit|nunit|MSTest)"' -Quiet) }
-          if ($testProjects) {
-            dotnet test InvenAdClicker.sln --no-build --no-restore --configuration Release --verbosity normal
-          } else {
-            Write-Host 'No test projects found. Skipping dotnet test.'
-          }
+          dotnet test tests/InvenAdClicker.Tests/InvenAdClicker.Tests.csproj `
+            --no-build `
+            --configuration Release `
+            --verbosity normal `
+            --results-directory ./artifacts/test-results `
+            --logger "trx;LogFileName=tests.trx" `
+            --collect:"XPlat Code Coverage"
+
+      - name: Summarize coverage
+        if: always()
+        shell: pwsh
+        run: ./scripts/summarize-coverage.ps1 -ResultsDirectory ./artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./artifacts/test-results
 
       - name: Publish (Release)
-        run: dotnet publish InvenAdClicker.sln -c Release -o ./publish --no-build --no-restore
+        run: dotnet publish InvenAdClicker.csproj -c Release -r win-x64 -o ./publish
+
+      - name: Verify published app and install matching Chromium
+        shell: pwsh
+        run: ./scripts/verify-publish.ps1 -PublishDirectory ./publish -InstallChromium
 
       - uses: actions/upload-artifact@v4
         with:
           name: publish-output
           path: ./publish/**
+          include-hidden-files: true

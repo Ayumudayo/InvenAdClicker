@@ -15,15 +15,20 @@ namespace InvenAdClicker.Utils
 
         public RollingFileLoggerProvider()
         {
-            _logger = new RollingFileLogger();
+            _logger = new RollingFileLogger(logDirectory: AppPaths.CreateDefault().LogDirectory);
+        }
+
+        public RollingFileLoggerProvider(AppPaths paths)
+        {
+            _logger = new RollingFileLogger(logDirectory: paths.LogDirectory);
         }
 
         public RollingFileLoggerProvider(
             int capacity,
             Func<string, string, Encoding, CancellationToken, Task>? fileAppender = null,
-            TimeSpan? disposeTimeout = null)
+            TimeSpan? disposeTimeout = null, string? logDirectory = null)
         {
-            _logger = new RollingFileLogger(capacity, fileAppender, disposeTimeout);
+            _logger = new RollingFileLogger(capacity, fileAppender, disposeTimeout, logDirectory);
         }
 
         public ILogger CreateLogger(string categoryName) => _logger;
@@ -56,7 +61,7 @@ namespace InvenAdClicker.Utils
             public RollingFileLogger(
                 int capacity = 10000,
                 Func<string, string, Encoding, CancellationToken, Task>? fileAppender = null,
-                TimeSpan? disposeTimeout = null)
+                TimeSpan? disposeTimeout = null, string? logDirectory = null)
             {
                 // Keep logging bounded and non-blocking if disk I/O falls behind.
                 _logChannel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(Math.Max(1, capacity))
@@ -67,8 +72,10 @@ namespace InvenAdClicker.Utils
                 });
                 _cts = new CancellationTokenSource();
                 var processStartedAt = Process.GetCurrentProcess().StartTime;
-                _runLogPath = GetRunPath(processStartedAt);
-                _fatalRunLogPath = GetFatalRunPath(processStartedAt);
+                var directory = Path.GetFullPath(logDirectory ?? AppPaths.CreateDefault().LogDirectory);
+                Directory.CreateDirectory(directory);
+                _runLogPath = GetRunPath(directory, processStartedAt);
+                _fatalRunLogPath = GetFatalRunPath(directory, processStartedAt);
                 _fileAppender = fileAppender ?? File.AppendAllTextAsync;
                 _disposeTimeout = disposeTimeout ?? TimeSpan.FromSeconds(1);
                 _writeTask = Task.Run(ProcessLogQueue);
@@ -181,9 +188,10 @@ namespace InvenAdClicker.Utils
                         await _fileAppender(_fatalRunLogPath, sb.ToString(), Utf8NoBom, _cts.Token);
                     }
                 }
-                catch
+                catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+                catch (Exception ex)
                 {
-                    // If file write fails, we drop it to avoid recursive failure
+                    Console.Error.WriteLine($"로그 파일 기록 실패: '{_runLogPath}'. {ex.Message}");
                 }
             }
 
@@ -192,16 +200,16 @@ namespace InvenAdClicker.Utils
                 return $"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss,fff}][{MapLevel(entry.Level)}] {entry.Message}";
             }
 
-            private static string GetRunPath(DateTime processStartedAt)
+            private static string GetRunPath(string logDirectory, DateTime processStartedAt)
             {
-                var dir = Path.Combine("logs", processStartedAt.ToString("yyyy"), processStartedAt.ToString("MM"));
+                var dir = Path.Combine(logDirectory, processStartedAt.ToString("yyyy"), processStartedAt.ToString("MM"));
                 var file = processStartedAt.ToString("yyyy-MM-dd_HH-mm-ss-fff") + ".log";
                 return Path.Combine(dir, file);
             }
 
-            private static string GetFatalRunPath(DateTime processStartedAt)
+            private static string GetFatalRunPath(string logDirectory, DateTime processStartedAt)
             {
-                var dir = Path.Combine("logs", "fatal", processStartedAt.ToString("yyyy"), processStartedAt.ToString("MM"));
+                var dir = Path.Combine(logDirectory, "fatal", processStartedAt.ToString("yyyy"), processStartedAt.ToString("MM"));
                 var file = processStartedAt.ToString("yyyy-MM-dd_HH-mm-ss-fff") + ".log";
                 return Path.Combine(dir, file);
             }
@@ -211,7 +219,7 @@ namespace InvenAdClicker.Utils
                 var dir = Path.GetDirectoryName(filePath);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 {
-                    try { Directory.CreateDirectory(dir); } catch { }
+                    Directory.CreateDirectory(dir);
                 }
             }
 
