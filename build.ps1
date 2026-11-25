@@ -36,17 +36,13 @@ try {
         try {
             $zip = [IO.Compression.ZipFile]::Open($temporary, 'Create')
             try {
-                $files = @('Cargo.toml', 'Cargo.lock', 'build.ps1', 'build.sh', 'config.json.example', '.gitignore', 'README.md', 'LICENSE')
-                $files += Get-ChildItem -LiteralPath 'src' -Filter '*.rs' -File -Recurse | ForEach-Object {
-                    [IO.Path]::GetRelativePath($PSScriptRoot, $_.FullName).Replace('\', '/')
-                }
-                foreach ($file in $files) {
-                    if (Test-Path -LiteralPath (Join-Path $PSScriptRoot $file) -PathType Leaf) {
-                        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, (Join-Path $PSScriptRoot $file), "InvenAdClicker/$file")
+                [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $exe, "InvenAdClicker.exe")
+                foreach ($file in @('config.json.example', 'README.md', 'LICENSE')) {
+                    $path = Join-Path $PSScriptRoot $file
+                    if (Test-Path -LiteralPath $path -PathType Leaf) {
+                        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $path, $file)
                     }
                 }
-                [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $template, "InvenAdClicker/config.json")
-                [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $exe, "InvenAdClicker/InvenAdClicker.exe")
             } finally { $zip.Dispose() }
             if ([IO.File]::Exists($destination)) {
                 [IO.File]::Replace($temporary, $destination, [System.Management.Automation.Language.NullString]::Value)
