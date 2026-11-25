@@ -978,6 +978,80 @@ fn final_report_with(
     out.flush()
 }
 
+pub(crate) fn balance_refresh(
+    out: &mut impl Write,
+    before: Points,
+    previous: Option<Points>,
+    current: &Result<Points>,
+    timestamp: &str,
+    width: usize,
+    colors: bool,
+) -> io::Result<()> {
+    balance_refresh_with(out, before, previous, current, timestamp, width, colors, glyphs())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn balance_refresh_with(
+    out: &mut impl Write,
+    before: Points,
+    previous: Option<Points>,
+    current: &Result<Points>,
+    timestamp: &str,
+    width: usize,
+    colors: bool,
+    g: Glyphs,
+) -> io::Result<()> {
+    let width = width.max(20);
+    match current {
+        Ok(points) => {
+            let (ini_delta, ini_color) = delta("이니", before.ini, points.ini);
+            let (beni_delta, beni_color) = delta("베니", before.beni, points.beni);
+            let ini_change = ini_delta.strip_prefix("이니 ").unwrap_or(&ini_delta);
+            let beni_change = beni_delta.strip_prefix("베니 ").unwrap_or(&beni_delta);
+            let mut line = Line::plain(format!(
+                " [{timestamp}] 재조회  이니 {} → {} (",
+                grouped(before.ini),
+                grouped(points.ini),
+            ));
+            line.paint(ini_change, ini_color);
+            line.push(&format!(
+                ")   베니 {} → {} (",
+                grouped(before.beni),
+                grouped(points.beni),
+            ));
+            line.paint(beni_change, beni_color);
+            line.push(")");
+            if previous == Some(*points) {
+                line.push("   ");
+                line.paint("변동 없음", Color::DarkGrey);
+            }
+            line.fit(width).write(out, colors)?;
+            writeln!(out)?;
+            if let (Some(b_exp), Some(a_exp)) = (before.exp, points.exp) {
+                let (exp_delta, exp_color) = delta("경험치", b_exp, a_exp);
+                let exp_change = exp_delta.strip_prefix("경험치 ").unwrap_or(&exp_delta);
+                let mut exp_line = Line::plain(format!(
+                    "                    경험치 {} → {} (",
+                    grouped(b_exp),
+                    grouped(a_exp),
+                ));
+                exp_line.paint(exp_change, exp_color);
+                exp_line.push(")");
+                exp_line.fit(width).write(out, colors)?;
+                writeln!(out)?;
+            }
+        }
+        Err(e) => {
+            let mut line = Line::plain(format!(" [{timestamp}] "));
+            line.paint(&format!("{} 잔액 재조회 실패", g.fail), Color::Red);
+            line.push(&format!(" · {}", clean(&format!("{e:#}"))));
+            line.fit(width).write(out, colors)?;
+            writeln!(out)?;
+        }
+    }
+    out.flush()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1252,6 +1326,71 @@ mod tests {
             ..page(2)
         });
         assert_eq!(detail_col(&while_waiting), detail_col(&while_done));
+    }
+
+    #[test]
+    fn balance_refresh_formats_deltas_unchanged_and_errors() {
+        let before = Points {
+            ini: 100,
+            beni: 10,
+            exp: Some(200),
+        };
+        let prev = Points {
+            ini: 105,
+            beni: 10,
+            exp: Some(205),
+        };
+        let curr = Points {
+            ini: 120,
+            beni: 9,
+            exp: Some(230),
+        };
+        let mut out = Vec::new();
+        balance_refresh_with(
+            &mut out,
+            before,
+            Some(prev),
+            &Ok(curr),
+            "00:25:10",
+            90,
+            false,
+            UNICODE,
+        )
+        .unwrap();
+        let changed = String::from_utf8(out).unwrap();
+        assert!(changed.contains("[00:25:10] 재조회"));
+        assert!(changed.contains("100 → 120 (+20)") && changed.contains("10 → 9 (-1)"));
+        assert!(changed.contains("경험치 200 → 230 (+30)") && !changed.contains("변동 없음"));
+
+        let mut out = Vec::new();
+        balance_refresh_with(
+            &mut out,
+            before,
+            Some(curr),
+            &Ok(curr),
+            "00:25:20",
+            90,
+            false,
+            UNICODE,
+        )
+        .unwrap();
+        let same = String::from_utf8(out).unwrap();
+        assert!(same.contains("[00:25:20] 재조회") && same.contains("변동 없음"));
+
+        let mut out = Vec::new();
+        balance_refresh_with(
+            &mut out,
+            before,
+            Some(curr),
+            &Err(anyhow::anyhow!("네트워크 오류")),
+            "00:25:30",
+            90,
+            false,
+            ASCII,
+        )
+        .unwrap();
+        let err = String::from_utf8(out).unwrap();
+        assert!(err.contains("[00:25:30]") && err.contains("x 잔액 재조회 실패") && err.contains("네트워크 오류"));
     }
 
     #[test]

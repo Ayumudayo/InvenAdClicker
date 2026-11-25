@@ -18,7 +18,7 @@ mod placements;
 mod progress;
 mod secrets;
 
-use client::{LOGIN_SURL, OAX_WARMUP_URL, SKILL_POINT_URL};
+use client::{Inven, Points, LOGIN_SURL, OAX_WARMUP_URL, SKILL_POINT_URL};
 use config::{Config, PageTarget};
 use log::SessionLog;
 use pipeline::{run_workers, Ctx};
@@ -27,6 +27,10 @@ use progress::{ProgressState, Totals};
 #[tokio::main]
 async fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let inspect_mode = matches!(
+        args.as_slice(),
+        [flag] | [flag, _] if flag == "--inspect-placements"
+    );
     let result = match args.as_slice() {
         [] => start(false).await,
         [flag] if flag == "--collect-only" => start(true).await,
@@ -40,8 +44,10 @@ async fn main() -> ExitCode {
     };
     match result {
         Ok(code) => {
-            if let Err(e) = wait_for_exit() {
-                eprintln!("종료 입력을 읽지 못했습니다. {e}");
+            if inspect_mode {
+                if let Err(e) = wait_for_exit() {
+                    eprintln!("종료 입력을 읽지 못했습니다. {e}");
+                }
             }
             code
         }
@@ -52,7 +58,13 @@ async fn main() -> ExitCode {
     }
 }
 
-fn wait_for_exit() -> std::io::Result<()> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExitAction {
+    Exit,
+    Refresh,
+}
+
+fn read_exit_action(allow_refresh: bool) -> std::io::Result<ExitAction> {
     use crossterm::{
         event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
         terminal,
@@ -60,15 +72,24 @@ fn wait_for_exit() -> std::io::Result<()> {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     if !(stdin.is_terminal() && stdout.is_terminal()) {
-        return Ok(());
+        return Ok(ExitAction::Exit);
     }
 
-    let prompt = "Enter 키를 누르면 종료합니다.";
+    let prompt = if allow_refresh {
+        "R: 잔액 재조회 · Enter: 종료"
+    } else {
+        "Enter 키를 누르면 종료합니다."
+    };
     if terminal::enable_raw_mode().is_err() {
         println!("\n{prompt}");
         stdout.lock().flush()?;
-        stdin.read_line(&mut String::new())?;
-        return Ok(());
+        let mut line = String::new();
+        stdin.read_line(&mut line)?;
+        return Ok(if allow_refresh && line.trim().eq_ignore_ascii_case("r") {
+            ExitAction::Refresh
+        } else {
+            ExitAction::Exit
+        });
     }
     struct RestoreMode;
     impl Drop for RestoreMode {
@@ -83,19 +104,108 @@ fn wait_for_exit() -> std::io::Result<()> {
     }
     write!(stdout.lock(), "\r\n{prompt}")?;
     stdout.lock().flush()?;
-    loop {
+    let action = loop {
         if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press
-                && (key.code == KeyCode::Enter
-                    || (key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)))
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            if key.code == KeyCode::Enter
+                || (key.code == KeyCode::Char('c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL))
             {
-                break;
+                break ExitAction::Exit;
+            }
+            if allow_refresh
+                && matches!(key.code, KeyCode::Char('r' | 'R'))
+                && !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+            {
+                break ExitAction::Refresh;
             }
         }
-    }
+    };
     drop(mode);
+    Ok(action)
+}
+
+fn wait_for_exit() -> std::io::Result<()> {
+    let _ = read_exit_action(false)?;
     println!();
+    Ok(())
+}
+
+fn log_points(log: &SessionLog, label: &str, before: Points, after: &Result<Points>) {
+    match after {
+        Ok(points) => {
+            if let (Some(b_exp), Some(a_exp)) = (before.exp, points.exp) {
+                log.log(&format!(
+                    "{label}: ini={} beni={} exp={a_exp} (delta ini={} beni={} exp={})",
+                    points.ini,
+                    points.beni,
+                    i128::from(points.ini) - i128::from(before.ini),
+                    i128::from(points.beni) - i128::from(before.beni),
+                    i128::from(a_exp) - i128::from(b_exp)
+                ));
+            } else {
+                log.log(&format!(
+                    "{label}: ini={} beni={} (delta ini={} beni={})",
+                    points.ini,
+                    points.beni,
+                    i128::from(points.ini) - i128::from(before.ini),
+                    i128::from(points.beni) - i128::from(before.beni)
+                ));
+            }
+        }
+        Err(e) => log.log(&format!("{label} 미확인: {e:#}")),
+    }
+}
+
+async fn wait_or_refresh(
+    inven: &Inven,
+    before: Points,
+    after: &mut Result<Points>,
+    log: &SessionLog,
+) -> std::io::Result<()> {
+    use crossterm::{cursor, queue, terminal};
+    loop {
+        let action = tokio::task::spawn_blocking(|| read_exit_action(true))
+            .await
+            .map_err(std::io::Error::other)??;
+        if action == ExitAction::Exit {
+            println!();
+            break;
+        }
+        {
+            let mut out = std::io::stdout().lock();
+            write!(out, "\r\n 잔액 재조회 중...")?;
+            out.flush()?;
+        }
+        let latest = inven.points().await.context("잔액 재조회 실패");
+        log_points(log, "REFRESH", before, &latest);
+        let stamp = chrono::Local::now().format("%H:%M:%S").to_string();
+        let width = usize::from(terminal::size().map_or(80, |(w, _)| w).saturating_sub(1));
+        {
+            let mut out = std::io::stdout().lock();
+            queue!(
+                out,
+                cursor::MoveToColumn(0),
+                terminal::Clear(terminal::ClearType::CurrentLine)
+            )?;
+            dashboard::balance_refresh(
+                &mut out,
+                before,
+                after.as_ref().ok().copied(),
+                &latest,
+                &stamp,
+                width,
+                dashboard::use_colors(),
+            )?;
+        }
+        if latest.is_ok() {
+            *after = latest;
+        }
+    }
     Ok(())
 }
 
@@ -226,7 +336,7 @@ async fn run(
             log.notice(&format!("진행 표 표시 오류: {e:#}"));
         }
     }
-    let after = outcome?;
+    let mut after = outcome?;
     let rows = state.snapshot();
     let totals = Totals::from_rows(&rows);
     log.log(&format!(
@@ -239,29 +349,7 @@ async fn run(
             ctx.collected.load(std::sync::atomic::Ordering::Relaxed)
         ));
     }
-    match &after {
-        Ok(points) => {
-            if let (Some(b_exp), Some(a_exp)) = (before.exp, points.exp) {
-                log.log(&format!(
-                    "AFTER: ini={} beni={} exp={a_exp} (delta ini={} beni={} exp={})",
-                    points.ini,
-                    points.beni,
-                    i128::from(points.ini) - i128::from(before.ini),
-                    i128::from(points.beni) - i128::from(before.beni),
-                    i128::from(a_exp) - i128::from(b_exp)
-                ));
-            } else {
-                log.log(&format!(
-                    "AFTER: ini={} beni={} (delta ini={} beni={})",
-                    points.ini,
-                    points.beni,
-                    i128::from(points.ini) - i128::from(before.ini),
-                    i128::from(points.beni) - i128::from(before.beni)
-                ));
-            }
-        }
-        Err(e) => log.log(&format!("최종 잔액 미확인: {e:#}")),
-    }
+    log_points(&log, "AFTER", before, &after);
     if tty {
         let width = usize::from(
             crossterm::terminal::size()
@@ -278,6 +366,9 @@ async fn run(
             dashboard::use_colors(),
         )?;
         println!("상세 로그  {}", log.path.display());
+        if let Err(e) = wait_or_refresh(&inven, before, &mut after, &log).await {
+            eprintln!("종료 입력을 읽지 못했습니다. {e}");
+        }
     }
     Ok(if after.is_err() || totals.errors + totals.failed > 0 {
         ExitCode::FAILURE
